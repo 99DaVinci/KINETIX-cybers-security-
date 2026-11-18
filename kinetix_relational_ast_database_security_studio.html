@@ -1,0 +1,2533 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KINETIX // Relational AST &amp; Database Security Studio</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- sql.js (In-Browser SQLite WebAssembly Engine) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
+
+  <!-- FontAwesome 6 Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+
+  <!-- Google Fonts: Plus Jakarta Sans & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Plus Jakarta Sans', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            obsidian: {
+              950: '#09090b',
+              900: '#121215',
+              850: '#17171c',
+              800: '#1f1f26',
+              700: '#2c2c35'
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    :root {
+      --bg-base: #09090b;
+      --bg-elevated: #121215;
+      --bg-card: #16161a;
+      --border-subtle: rgba(255, 255, 255, 0.08);
+      --border-bright: rgba(255, 255, 255, 0.15);
+      --emerald-glow: rgba(16, 185, 129, 0.22);
+      --amber-glow: rgba(245, 158, 11, 0.22);
+      --rose-glow: rgba(244, 63, 94, 0.25);
+    }
+
+    body {
+      background-color: var(--bg-base);
+      color: #f4f4f5;
+      font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+      overflow-x: hidden;
+    }
+
+    /* Luxury Obsidian Glass Panels */
+    .kinetix-card {
+      background: linear-gradient(180deg, rgba(26, 26, 32, 0.88) 0%, rgba(18, 18, 22, 0.94) 100%);
+      border: 1px solid var(--border-subtle);
+      box-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.6), inset 0 1px 0 0 rgba(255, 255, 255, 0.06);
+      backdrop-filter: blur(12px);
+    }
+
+    .kinetix-subpanel {
+      background-color: #0d0d10;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    /* Guided Coach Spotlight Ring */
+    @keyframes coachPulse {
+      0%, 100% {
+        box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.75), 0 0 28px rgba(245, 158, 11, 0.25);
+      }
+      50% {
+        box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.95), 0 0 42px rgba(245, 158, 11, 0.45);
+      }
+    }
+    .coach-spotlight {
+      animation: coachPulse 2.2s infinite ease-in-out;
+      border-color: rgba(245, 158, 11, 0.7) !important;
+    }
+
+    /* Animated Pipeline Connector Flow */
+    @keyframes packetFlow {
+      0% { stroke-dashoffset: 36; }
+      100% { stroke-dashoffset: 0; }
+    }
+    .pipeline-flow-line {
+      stroke-dasharray: 6 6;
+      animation: packetFlow 0.75s linear infinite;
+    }
+
+    /* AST Node Animations */
+    @keyframes nodeEntrance {
+      0% { opacity: 0; transform: translateY(8px) scale(0.96); }
+      100% { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .ast-node-anim {
+      animation: nodeEntrance 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    @keyframes driftPulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(244, 63, 94, 0.45), 0 0 20px rgba(244, 63, 94, 0.2); }
+      50% { box-shadow: 0 0 0 5px rgba(244, 63, 94, 0), 0 0 32px rgba(244, 63, 94, 0.4); }
+    }
+    .ast-drift-alert {
+      animation: driftPulse 1.8s infinite;
+    }
+
+    /* Custom Scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #09090b;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #27272a;
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #3f3f46;
+    }
+  </style>
+</head>
+
+<body class="h-screen flex flex-col overflow-hidden select-none sm:select-auto">
+
+  <!-- Toast Notification Stack -->
+  <div id="toastStack" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2.5 max-w-sm pointer-events-none"></div>
+
+  <!-- =====================================================================
+       TOP ENTERPRISE COMMAND HEADER
+       ===================================================================== -->
+  <header class="h-14 shrink-0 bg-[#0c0c0f]/95 border-b border-white/[0.08] px-4 lg:px-6 flex items-center justify-between gap-4 z-30">
+    <!-- Left: Brand Identity & Sidebar Toggle -->
+    <div class="flex items-center gap-3">
+      <button onclick="toggleLeftSidebar()" title="Toggle Navigation Sidebar" class="w-8 h-8 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-white/10 flex items-center justify-center text-zinc-400 hover:text-white transition cursor-pointer">
+        <i class="fa-solid fa-bars-staggered text-xs"></i>
+      </button>
+
+      <div class="flex items-center gap-2.5">
+        <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-500/20 via-emerald-500/20 to-zinc-900 border border-amber-500/40 flex items-center justify-center text-amber-400 shadow-inner">
+          <i class="fa-solid fa-diagram-project text-xs"></i>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="font-bold tracking-tight text-sm text-white">KINETIX</span>
+            <span class="text-[10px] font-mono uppercase tracking-widest px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/25">
+              AST &amp; SQL Security Studio
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Center: Global Execution Mode Switcher (Always Accessible) -->
+    <div id="globalModeSwitcher" class="hidden md:flex items-center gap-1.5 bg-zinc-950 p-1 rounded-xl border border-white/10">
+      <span class="text-[11px] font-mono text-zinc-400 px-2.5">Driver Mode:</span>
+      <button id="headerConcatBtn" onclick="setExecutionMode('concat')" class="px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 bg-rose-500/15 text-rose-300 border border-rose-500/30">
+        <span class="w-1.5 h-1.5 rounded-full bg-rose-400 animate-pulse"></span>
+        <span>Raw String Concatenation</span>
+      </button>
+      <button id="headerParamBtn" onclick="setExecutionMode('param')" class="px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200">
+        <i class="fa-solid fa-shield-halved text-emerald-400 text-[11px]"></i>
+        <span>Prepared Statement ($1, $2)</span>
+      </button>
+    </div>
+
+    <!-- Right: Guided Tour Toggle & Inspector Drawer Toggle -->
+    <div class="flex items-center gap-2.5">
+      <button onclick="toggleGuideBar()" id="guideBarToggleBtn" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/25 flex items-center gap-1.5 transition cursor-pointer">
+        <i class="fa-solid fa-compass text-amber-400"></i>
+        <span class="hidden sm:inline">Interactive Guide</span>
+      </button>
+
+      <button onclick="toggleInspectorDrawer()" id="inspectorToggleBtn" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-900 hover:bg-zinc-800 text-zinc-200 border border-white/10 flex items-center gap-2 transition cursor-pointer">
+        <i class="fa-solid fa-microscope text-emerald-400"></i>
+        <span class="hidden sm:inline">Inspector Drawer</span>
+        <span id="inspectorEventCount" class="px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-mono text-[10px]">1</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- =====================================================================
+       MAIN IDE BODY (LEFT SIDEBAR + CENTER WORKSPACE + RIGHT DRAWER)
+       ===================================================================== -->
+  <div class="flex-1 flex overflow-hidden relative">
+
+    <!-- ===================================================================
+         LEFT COLLAPSIBLE NAVIGATION SIDEBAR
+         =================================================================== -->
+    <aside id="leftSidebar" class="w-64 shrink-0 bg-[#0d0d10] border-r border-white/[0.07] flex flex-col justify-between transition-all duration-300 z-20">
+      <!-- Top Workspace Links -->
+      <div class="p-3.5 space-y-6 overflow-y-auto">
+        <div>
+          <div class="px-2.5 mb-2 flex items-center justify-between">
+            <span class="text-[10px] font-mono uppercase tracking-widest text-zinc-500">Studio Workspaces</span>
+          </div>
+
+          <nav class="space-y-1">
+            <button id="navBtn_pipeline" onclick="switchWorkspace('pipeline')" class="w-full text-left px-3 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-between transition cursor-pointer bg-gradient-to-r from-emerald-500/15 to-transparent text-white border border-emerald-500/30">
+              <div class="flex items-center gap-2.5">
+                <i class="fa-solid fa-network-wired text-emerald-400 w-4 text-center"></i>
+                <span>Pipeline &amp; AST Studio</span>
+              </div>
+              <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">LIVE</span>
+            </button>
+
+            <button id="navBtn_database" onclick="switchWorkspace('database')" class="w-full text-left px-3 py-2.5 rounded-xl text-xs font-medium flex items-center justify-between transition cursor-pointer text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.03] border border-transparent">
+              <div class="flex items-center gap-2.5">
+                <i class="fa-solid fa-database text-amber-400 w-4 text-center"></i>
+                <span>Database &amp; SQL Console</span>
+              </div>
+              <span id="sidebarTableCount" class="text-[10px] font-mono text-zinc-500">4 Tbls</span>
+            </button>
+
+            <button id="navBtn_defense" onclick="switchWorkspace('defense')" class="w-full text-left px-3 py-2.5 rounded-xl text-xs font-medium flex items-center justify-between transition cursor-pointer text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.03] border border-transparent">
+              <div class="flex items-center gap-2.5">
+                <i class="fa-solid fa-shield-halved text-emerald-400 w-4 text-center"></i>
+                <span>Defense &amp; Code Lab</span>
+              </div>
+              <span class="text-[10px] font-mono text-zinc-500">WAF/AST</span>
+            </button>
+
+            <button id="navBtn_telemetry" onclick="switchWorkspace('telemetry')" class="w-full text-left px-3 py-2.5 rounded-xl text-xs font-medium flex items-center justify-between transition cursor-pointer text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.03] border border-transparent">
+              <div class="flex items-center gap-2.5">
+                <i class="fa-solid fa-chart-line text-amber-400 w-4 text-center"></i>
+                <span>Telemetry &amp; Audit Report</span>
+              </div>
+              <span id="sidebarAuditBadge" class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300">1</span>
+            </button>
+          </nav>
+        </div>
+
+        <!-- Quick Scenario Jumpers -->
+        <div class="pt-2 border-t border-white/[0.06]">
+          <div class="px-2.5 mb-2 flex items-center justify-between">
+            <span class="text-[10px] font-mono uppercase tracking-widest text-zinc-500">Quick Demonstrations</span>
+          </div>
+          <div class="space-y-1.5">
+            <button onclick="triggerQuickDemo('baseline')" class="w-full text-left px-3 py-2 rounded-lg text-xs text-zinc-300 hover:text-white hover:bg-zinc-900 border border-white/[0.05] transition flex items-center gap-2 cursor-pointer">
+              <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+              <span>1. Valid Vault Auth</span>
+            </button>
+            <button onclick="triggerQuickDemo('tautology')" class="w-full text-left px-3 py-2 rounded-lg text-xs text-zinc-300 hover:text-white hover:bg-zinc-900 border border-white/[0.05] transition flex items-center gap-2 cursor-pointer">
+              <span class="w-2 h-2 rounded-full bg-rose-400"></span>
+              <span>2. Boolean AST Drift (' OR '1'='1)</span>
+            </button>
+            <button onclick="triggerQuickDemo('comment')" class="w-full text-left px-3 py-2 rounded-lg text-xs text-zinc-300 hover:text-white hover:bg-zinc-900 border border-white/[0.05] transition flex items-center gap-2 cursor-pointer">
+              <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+              <span>3. Comment Truncation (' --)</span>
+            </button>
+            <button onclick="triggerQuickDemo('union')" class="w-full text-left px-3 py-2 rounded-lg text-xs text-zinc-300 hover:text-white hover:bg-zinc-900 border border-white/[0.05] transition flex items-center gap-2 cursor-pointer">
+              <span class="w-2 h-2 rounded-full bg-rose-500"></span>
+              <span>4. Cross-Table UNION Extract</span>
+            </button>
+            <button onclick="triggerQuickDemo('patched')" class="w-full text-left px-3 py-2 rounded-lg text-xs text-emerald-300 hover:text-white bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/25 transition flex items-center gap-2 cursor-pointer">
+              <i class="fa-solid fa-lock text-emerald-400 text-[10px]"></i>
+              <span>5. Verify Prepared Fix ($1)</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom Engine Status Card -->
+      <div class="p-3.5 border-t border-white/[0.07] bg-[#0a0a0c] space-y-3">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+            <span id="engineStatusLabel" class="text-[11px] font-mono font-semibold text-zinc-200">SQLite Relational Engine</span>
+          </div>
+          <span class="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">ONLINE</span>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2 text-center">
+          <div class="p-2 rounded-lg bg-zinc-900/90 border border-white/[0.05]">
+            <div class="text-[10px] font-mono text-zinc-500">QUERIES RUN</div>
+            <div id="sidebarMetricQueries" class="text-sm font-mono font-bold text-white mt-0.5">1</div>
+          </div>
+          <div class="p-2 rounded-lg bg-zinc-900/90 border border-white/[0.05]">
+            <div class="text-[10px] font-mono text-zinc-500">AST DRIFTS</div>
+            <div id="sidebarMetricDrifts" class="text-sm font-mono font-bold text-rose-400 mt-0.5">0</div>
+          </div>
+        </div>
+
+        <button onclick="resetRelationalDatabase()" class="w-full py-2 px-3 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-white/10 text-xs font-medium flex items-center justify-center gap-2 transition cursor-pointer">
+          <i class="fa-solid fa-rotate-left text-[11px] text-amber-400"></i>
+          <span>Reset Relational Database</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- ===================================================================
+         CENTER STAGE (INTERACTIVE GUIDE BAR + ACTIVE WORKSPACE)
+         =================================================================== -->
+    <main class="flex-1 flex flex-col overflow-hidden bg-[#09090b]">
+
+      <!-- TOP INTERACTIVE STEP-BY-STEP WORKFLOW COACH -->
+      <div id="interactiveGuideBar" class="shrink-0 bg-gradient-to-r from-amber-500/10 via-zinc-900/95 to-emerald-500/10 border-b border-amber-500/25 px-6 py-3.5 transition-all">
+        <div class="max-w-7xl mx-auto flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <!-- Step Info & Plain-English Guidance -->
+          <div class="flex items-start sm:items-center gap-3.5">
+            <div id="guideStepBadge" class="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-300 font-mono font-bold text-xs shrink-0 shadow">
+              01/04
+            </div>
+            <div>
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="text-[10px] font-mono uppercase tracking-widest text-amber-400 font-semibold">Interactive Guided Walkthrough</span>
+                <span id="guideStepTitle" class="text-sm font-bold text-white">Step 1: Select an Application Endpoint &amp; Input Payload</span>
+              </div>
+              <p id="guideStepDescription" class="text-xs text-zinc-300 mt-0.5 leading-relaxed">
+                Start in the <strong>Endpoint Request Builder</strong> below. Choose an API endpoint or click <strong>"Auto-Demonstrate This Step"</strong> to load a test input and see where user data enters the SQL pipeline.
+              </p>
+            </div>
+          </div>
+
+          <!-- Step Controls -->
+          <div class="flex items-center gap-2 shrink-0 self-end lg:self-center">
+            <button onclick="changeGuideStep(-1)" class="px-2.5 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-white/10 text-xs font-medium cursor-pointer transition">
+              <i class="fa-solid fa-chevron-left"></i>
+            </button>
+            <button onclick="autoDemonstrateCurrentStep()" class="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs flex items-center gap-1.5 cursor-pointer transition shadow-md">
+              <i class="fa-solid fa-wand-magic-sparkles"></i>
+              <span>Auto-Demonstrate Step</span>
+            </button>
+            <button onclick="changeGuideStep(1)" class="px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-200 border border-white/10 text-xs font-medium flex items-center gap-1.5 cursor-pointer transition">
+              <span>Next Step</span>
+              <i class="fa-solid fa-chevron-right text-[10px]"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- SCROLLABLE WORKSPACE VIEWPORT -->
+      <div id="workspaceScrollContainer" class="flex-1 overflow-y-auto px-6 py-6">
+        <div class="max-w-7xl mx-auto space-y-6 pb-12">
+
+          <!-- ===============================================================
+               WORKSPACE 1: LIVE PIPELINE & AST STUDIO
+               =============================================================== -->
+          <section id="workspace_pipeline" class="space-y-6">
+
+            <!-- 1A. ANIMATED 4-STAGE SQL EXECUTION PIPELINE -->
+            <div id="panelPipelineVisualizer" class="kinetix-card rounded-2xl p-5 space-y-4 transition-all">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div class="flex items-center gap-2.5">
+                  <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+                  <h2 class="text-xs font-mono uppercase tracking-wider text-zinc-300 font-semibold">
+                    Live 4-Stage Relational Execution Pipeline
+                  </h2>
+                </div>
+                <div class="flex items-center gap-3 text-xs font-mono">
+                  <span id="pipelineLatencyBadge" class="px-2.5 py-0.5 rounded-md bg-zinc-900 text-zinc-300 border border-white/10">
+                    Total Time: <strong class="text-emerald-400">1.4 ms</strong>
+                  </span>
+                  <span id="pipelineSecurityBadge" class="px-2.5 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                    AST Structure Intact
+                  </span>
+                </div>
+              </div>
+
+              <!-- 4 Stage Cards + Animated SVG Connectors -->
+              <div class="grid grid-cols-1 lg:grid-cols-4 gap-4 relative">
+                <!-- STAGE 1: HTTP Payload -->
+                <div id="stageCard1" class="kinetix-subpanel rounded-xl p-4 relative border border-white/10 transition-all">
+                  <div class="flex items-center justify-between mb-2">
+                    <span class="text-[10px] font-mono uppercase tracking-wider text-amber-400">Stage 01 &bull; HTTP Input</span>
+                    <span class="text-[10px] font-mono text-zinc-500">0.2 ms</span>
+                  </div>
+                  <div class="text-xs font-semibold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-satellite-dish text-amber-400"></i>
+                    <span id="stage1EndpointLabel">POST /api/v2/auth/verify</span>
+                  </div>
+                  <div id="stage1PayloadPreview" class="mt-2 p-2 rounded-lg bg-zinc-950 font-mono text-[11px] text-zinc-300 truncate border border-white/[0.05]">
+                    {"user": "elena.rostova"}
+                  </div>
+                </div>
+
+                <!-- STAGE 2: Lexical Tokenizer -->
+                <div id="stageCard2" class="kinetix-subpanel rounded-xl p-4 relative border border-white/10 transition-all">
+                  <div class="flex items-center justify-between mb-2">
+                    <span class="text-[10px] font-mono uppercase tracking-wider text-amber-400">Stage 02 &bull; Lexical Scanner</span>
+                    <span id="stage2TokenCount" class="text-[10px] font-mono text-zinc-400">14 Tokens</span>
+                  </div>
+                  <div class="text-xs font-semibold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-code-commit text-emerald-400"></i>
+                    <span id="stage2Title">Token Stream Assembly</span>
+                  </div>
+                  <div id="stage2Preview" class="mt-2 p-2 rounded-lg bg-zinc-950 font-mono text-[11px] text-zinc-300 truncate border border-white/[0.05]">
+                    [SELECT] [FROM] [WHERE] [=]
+                  </div>
+                </div>
+
+                <!-- STAGE 3: AST Compiler -->
+                <div id="stageCard3" class="kinetix-subpanel rounded-xl p-4 relative border border-white/10 transition-all">
+                  <div class="flex items-center justify-between mb-2">
+                    <span class="text-[10px] font-mono uppercase tracking-wider text-amber-400">Stage 03 &bull; Syntax Tree (AST)</span>
+                    <span id="stage3StatusTag" class="text-[10px] font-mono text-emerald-400">Verified</span>
+                  </div>
+                  <div class="text-xs font-semibold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-sitemap text-amber-400"></i>
+                    <span id="stage3Title">Predicate Tree Evaluation</span>
+                  </div>
+                  <div id="stage3Preview" class="mt-2 p-2 rounded-lg bg-zinc-950 font-mono text-[11px] text-zinc-300 truncate border border-white/[0.05]">
+                    WHERE (username AND vault_pin)
+                  </div>
+                </div>
+
+                <!-- STAGE 4: SQLite B-Tree Execution -->
+                <div id="stageCard4" class="kinetix-subpanel rounded-xl p-4 relative border border-white/10 transition-all">
+                  <div class="flex items-center justify-between mb-2">
+                    <span class="text-[10px] font-mono uppercase tracking-wider text-emerald-400">Stage 04 &bull; SQLite Engine</span>
+                    <span id="stage4RowTag" class="text-[10px] font-mono text-emerald-400">1 Row</span>
+                  </div>
+                  <div class="text-xs font-semibold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-hard-drive text-emerald-400"></i>
+                    <span>Relational Tuple Fetch</span>
+                  </div>
+                  <div id="stage4Preview" class="mt-2 p-2 rounded-lg bg-zinc-950 font-mono text-[11px] text-zinc-300 truncate border border-white/[0.05]">
+                    Returned 1 record from users
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 1B. TWO-COLUMN CORE STUDIO: REQUEST BUILDER (LEFT) + INTERACTIVE AST & SQL INSPECTOR (RIGHT) -->
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+
+              <!-- LEFT 5 COLS: ENDPOINT REQUEST BUILDER & ONE-CLICK PRESETS -->
+              <div id="panelEndpointBuilder" class="lg:col-span-5 kinetix-card rounded-2xl p-6 space-y-5 transition-all">
+                <div class="flex items-center justify-between border-b border-white/[0.07] pb-4">
+                  <div>
+                    <span class="text-[10px] font-mono uppercase tracking-widest text-amber-400"> Step 01 &bull; Target Endpoint</span>
+                    <h3 class="text-base font-bold text-white mt-0.5">Application Request Simulator</h3>
+                  </div>
+                  <span id="activeTableBadge" class="text-[11px] font-mono px-2.5 py-1 rounded-lg bg-zinc-900 text-zinc-300 border border-white/10">
+                    Table: <strong class="text-amber-300">users</strong>
+                  </span>
+                </div>
+
+                <!-- 3 Application Endpoint Tabs -->
+                <div class="grid grid-cols-3 gap-1.5 bg-zinc-950 p-1 rounded-xl border border-white/[0.07]">
+                  <button id="epBtn_auth" onclick="selectEndpointScenario('auth')" class="py-2 px-2 rounded-lg text-[11px] font-semibold bg-zinc-800 text-white transition cursor-pointer text-center">
+                    <i class="fa-solid fa-vault text-amber-400 mr-1"></i>Vault Auth
+                  </button>
+                  <button id="epBtn_ledger" onclick="selectEndpointScenario('ledger')" class="py-2 px-2 rounded-lg text-[11px] font-medium text-zinc-400 hover:text-white transition cursor-pointer text-center">
+                    <i class="fa-solid fa-money-bill-transfer text-emerald-400 mr-1"></i>Wire Ledger
+                  </button>
+                  <button id="epBtn_staff" onclick="selectEndpointScenario('staff')" class="py-2 px-2 rounded-lg text-[11px] font-medium text-zinc-400 hover:text-white transition cursor-pointer text-center">
+                    <i class="fa-solid fa-id-badge text-amber-400 mr-1"></i>Clearance
+                  </button>
+                </div>
+
+                <!-- Dynamic Input Controls -->
+                <div class="space-y-4">
+                  <div>
+                    <div class="flex items-center justify-between mb-1.5">
+                      <label id="inputLabelPrimary" class="text-xs font-semibold text-zinc-200">
+                        Primary Parameter (<code class="text-amber-300 font-mono">username</code>)
+                      </label>
+                      <span class="text-[10px] font-mono text-zinc-500">Untrusted HTTP String</span>
+                    </div>
+                    <input
+                      id="studioPrimaryInput"
+                      type="text"
+                      value="elena.rostova"
+                      oninput="executeStudioPipeline(false)"
+                      class="w-full px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-white/15 focus:border-amber-400 text-xs font-mono text-white outline-none transition shadow-inner"
+                      placeholder="Enter parameter or SQL test vector..."
+                    />
+                  </div>
+
+                  <div id="secondaryFieldContainer">
+                    <div class="flex items-center justify-between mb-1.5">
+                      <label id="inputLabelSecondary" class="text-xs font-semibold text-zinc-200">
+                        Secondary Parameter (<code class="text-amber-300 font-mono">vault_pin</code>)
+                      </label>
+                      <span class="text-[10px] font-mono text-zinc-500">Auth Credential</span>
+                    </div>
+                    <input
+                      id="studioSecondaryInput"
+                      type="text"
+                      value="VAULT-9920"
+                      oninput="executeStudioPipeline(false)"
+                      class="w-full px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-white/15 focus:border-amber-400 text-xs font-mono text-white outline-none transition shadow-inner"
+                      placeholder="Enter Vault PIN..."
+                    />
+                  </div>
+                </div>
+
+                <!-- Driver Mode Selector Inside Builder -->
+                <div class="p-3.5 rounded-xl bg-zinc-950/90 border border-white/[0.07] space-y-2.5">
+                  <div class="flex items-center justify-between">
+                    <span class="text-[11px] font-semibold text-zinc-300">Database Driver Compilation Mode</span>
+                    <span id="builderModeStatus" class="text-[10px] font-mono text-rose-400">Unparameterized</span>
+                  </div>
+                  <div class="grid grid-cols-2 gap-2">
+                    <button id="builderConcatBtn" onclick="setExecutionMode('concat')" class="py-2 px-3 rounded-lg text-xs font-semibold transition cursor-pointer bg-rose-500/15 text-rose-300 border border-rose-500/30 flex items-center justify-center gap-1.5">
+                      <i class="fa-solid fa-link-slash text-[11px]"></i>
+                      <span>String Concat</span>
+                    </button>
+                    <button id="builderParamBtn" onclick="setExecutionMode('param')" class="py-2 px-3 rounded-lg text-xs font-semibold transition cursor-pointer bg-zinc-900 text-zinc-400 hover:text-white border border-white/10 flex items-center justify-center gap-1.5">
+                      <i class="fa-solid fa-lock text-emerald-400 text-[11px]"></i>
+                      <span>Prepared ($1, $2)</span>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Execute Action Button -->
+                <button onclick="executeStudioPipeline(true)" class="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-zinc-950 font-bold text-xs tracking-wide uppercase transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-emerald-950/50">
+                  <i class="fa-solid fa-bolt"></i>
+                  <span>Execute Query &amp; Trace AST Pipeline</span>
+                </button>
+
+                <!-- One-Click Interactive Test Presets -->
+                <div class="pt-3 border-t border-white/[0.07] space-y-2.5">
+                  <div class="flex items-center justify-between">
+                    <span class="text-[11px] font-mono uppercase tracking-wider text-zinc-400">One-Click Test Vectors</span>
+                    <span class="text-[10px] font-mono text-amber-400">Click to Load &amp; Trace</span>
+                  </div>
+
+                  <div class="grid grid-cols-1 gap-2">
+                    <button onclick="loadStudioPreset('valid')" class="text-left p-2.5 rounded-xl bg-zinc-900/70 hover:bg-zinc-900 border border-white/[0.06] transition flex items-center justify-between cursor-pointer group">
+                      <div>
+                        <div class="text-xs font-semibold text-zinc-200 group-hover:text-white">Standard Valid Authentication</div>
+                        <div class="text-[11px] font-mono text-zinc-400">elena.rostova &bull; VAULT-9920</div>
+                      </div>
+                      <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">Baseline</span>
+                    </button>
+
+                    <button onclick="loadStudioPreset('tautology')" class="text-left p-2.5 rounded-xl bg-zinc-900/70 hover:bg-zinc-900 border border-white/[0.06] transition flex items-center justify-between cursor-pointer group">
+                      <div>
+                        <div class="text-xs font-semibold text-zinc-200 group-hover:text-white">Boolean Predicate Injection (<code class="text-rose-300">' OR '1'='1</code>)</div>
+                        <div class="text-[11px] font-mono text-rose-300/90">Grafts an always-true OR branch onto the AST</div>
+                      </div>
+                      <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-rose-500/10 text-rose-300 border border-rose-500/25">AST Drift</span>
+                    </button>
+
+                    <button onclick="loadStudioPreset('comment')" class="text-left p-2.5 rounded-xl bg-zinc-900/70 hover:bg-zinc-900 border border-white/[0.06] transition flex items-center justify-between cursor-pointer group">
+                      <div>
+                        <div class="text-xs font-semibold text-zinc-200 group-hover:text-white">Comment Sequence Truncation (<code class="text-amber-300">viktor.kane' --</code>)</div>
+                        <div class="text-[11px] font-mono text-amber-300/90">Prunes the AND vault_pin check from the tree</div>
+                      </div>
+                      <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/25">Truncates AST</span>
+                    </button>
+
+                    <button onclick="loadStudioPreset('union')" class="text-left p-2.5 rounded-xl bg-zinc-900/70 hover:bg-zinc-900 border border-white/[0.06] transition flex items-center justify-between cursor-pointer group">
+                      <div>
+                        <div class="text-xs font-semibold text-zinc-200 group-hover:text-white">Cross-Table UNION Extraction (<code class="text-rose-300">system_credentials</code>)</div>
+                        <div class="text-[11px] font-mono text-rose-300/90">Appends second SELECT statement from secret vault</div>
+                      </div>
+                      <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-rose-500/10 text-rose-300 border border-rose-500/25">Multi-Table</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- RIGHT 7 COLS: COMPILED SQL STREAM + VISUAL ABSTRACT SYNTAX TREE (AST) -->
+              <div class="lg:col-span-7 space-y-6">
+
+                <!-- Compiled SQL Command & Parameter Binding Box -->
+                <div id="panelSqlCompiler" class="kinetix-card rounded-2xl p-6 space-y-4 transition-all">
+                  <div class="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <span class="text-[10px] font-mono uppercase tracking-widest text-emerald-400">Step 02 &bull; Lexical SQL Stream</span>
+                      <h3 class="text-base font-bold text-white mt-0.5">Compiled SQL Statement &amp; Token Stream</h3>
+                    </div>
+                    <span id="compilerModeBadge" class="text-xs font-mono px-3 py-1 rounded-full bg-rose-500/15 text-rose-300 border border-rose-500/30">
+                      Raw String Interpolation
+                    </span>
+                  </div>
+
+                  <!-- Highlighted SQL Code Box -->
+                  <div id="compiledSqlDisplay" class="p-4 rounded-xl bg-zinc-950 border border-white/10 font-mono text-xs leading-relaxed break-all shadow-inner">
+                    <!-- Populated by JS -->
+                  </div>
+
+                  <!-- Bound Parameters Strip (Shown when Prepared Statement mode is active) -->
+                  <div id="boundParamsStrip" class="hidden p-3.5 rounded-xl bg-emerald-950/25 border border-emerald-500/30 flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
+                    <div class="flex items-center gap-2 text-emerald-300 font-semibold">
+                      <i class="fa-solid fa-shield-check text-emerald-400"></i>
+                      <span>Isolated Data Parameters (Bound Post-Compilation):</span>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2">
+                      <span id="boundChip1" class="px-2.5 py-1 rounded-lg bg-zinc-900 text-emerald-300 border border-emerald-500/30"></span>
+                      <span id="boundChip2" class="px-2.5 py-1 rounded-lg bg-zinc-900 text-emerald-300 border border-emerald-500/30"></span>
+                    </div>
+                  </div>
+
+                  <!-- Live Contextual Diagnostic Banner -->
+                  <div id="liveDiagnosticBanner" class="p-4 rounded-xl bg-zinc-900/90 border border-white/[0.08] flex items-start gap-3">
+                    <i id="diagIcon" class="fa-solid fa-circle-info text-amber-400 mt-0.5"></i>
+                    <div id="diagText" class="text-xs text-zinc-300 leading-relaxed">
+                      <!-- Populated dynamically -->
+                    </div>
+                  </div>
+                </div>
+
+                <!-- INTERACTIVE ABSTRACT SYNTAX TREE (AST) VISUALIZER -->
+                <div id="panelAstTree" class="kinetix-card rounded-2xl p-6 space-y-4 transition-all">
+                  <div class="flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.07] pb-4">
+                    <div>
+                      <span class="text-[10px] font-mono uppercase tracking-widest text-amber-400">Step 03 &bull; Relational Parser Tree</span>
+                      <h3 class="text-base font-bold text-white mt-0.5">Interactive Abstract Syntax Tree (AST)</h3>
+                    </div>
+
+                    <div class="flex items-center gap-3 text-[11px] font-mono">
+                      <span class="flex items-center gap-1.5 text-zinc-400">
+                        <span class="w-2.5 h-2.5 rounded-sm bg-emerald-500/40 border border-emerald-400"></span>Intended Node
+                      </span>
+                      <span class="flex items-center gap-1.5 text-zinc-400">
+                        <span class="w-2.5 h-2.5 rounded-sm bg-rose-500/40 border border-rose-400"></span>Injected AST Branch
+                      </span>
+                    </div>
+                  </div>
+
+                  <!-- Dynamic Visual Tree Container -->
+                  <div id="astGraphContainer" class="p-5 rounded-xl bg-[#0b0b0e] border border-white/[0.07] min-h-[230px] flex flex-col justify-center">
+                    <!-- Rendered dynamically by renderAstTree() -->
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+            <!-- 1C. LIVE SQLITE RESULT SET TABLE -->
+            <div id="panelResultGrid" class="kinetix-card rounded-2xl p-6 space-y-4">
+              <div class="flex flex-wrap items-center justify-between gap-4">
+                <div class="flex items-center gap-3">
+                  <div class="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                    <i class="fa-solid fa-table-list"></i>
+                  </div>
+                  <div>
+                    <div class="flex items-center gap-2">
+                      <h3 class="text-base font-bold text-white">SQLite Storage Engine Result Set</h3>
+                      <span id="resultRowCountBadge" class="text-xs font-mono px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                        1 Row Returned
+                      </span>
+                    </div>
+                    <p class="text-xs text-zinc-400">Live records fetched from the in-browser relational database for the query above.</p>
+                  </div>
+                </div>
+
+                <div class="flex items-center gap-2">
+                  <button onclick="switchWorkspace('database')" class="px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-white/10 text-xs font-medium cursor-pointer transition">
+                    <i class="fa-solid fa-database text-amber-400 mr-1.5"></i>Open in Database Studio
+                  </button>
+                </div>
+              </div>
+
+              <div class="overflow-x-auto rounded-xl border border-white/10 bg-zinc-950">
+                <table class="w-full text-left border-collapse text-xs">
+                  <thead id="studioResultThead" class="bg-zinc-900/90 text-zinc-400 font-mono border-b border-white/10">
+                    <!-- Populated dynamically -->
+                  </thead>
+                  <tbody id="studioResultTbody" class="divide-y divide-white/[0.06] font-mono text-zinc-200">
+                    <!-- Populated dynamically -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+          </section>
+
+          <!-- ===============================================================
+               WORKSPACE 2: RELATIONAL DATABASE STUDIO & SQL WORKBENCH
+               =============================================================== -->
+          <section id="workspace_database" class="hidden space-y-6">
+
+            <div class="kinetix-card rounded-2xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <span class="text-[10px] font-mono uppercase tracking-widest text-amber-400">In-Browser SQLite Relational Engine</span>
+                <h1 class="text-xl font-bold text-white mt-0.5">Relational Schema Explorer &amp; Live SQL Workbench</h1>
+                <p class="text-xs text-zinc-400 mt-1">
+                  Inspect all 4 database tables, insert custom records, or run arbitrary SQL queries against the live database.
+                </p>
+              </div>
+              <div class="flex items-center gap-2.5 self-start md:self-center">
+                <button onclick="exportDatabaseJson()" class="px-3.5 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-200 border border-white/10 text-xs font-medium flex items-center gap-2 cursor-pointer transition">
+                  <i class="fa-solid fa-file-export text-amber-400"></i>
+                  <span>Export Schema (.JSON)</span>
+                </button>
+                <button onclick="resetRelationalDatabase()" class="px-3.5 py-2 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 text-xs font-semibold flex items-center gap-2 cursor-pointer transition">
+                  <i class="fa-solid fa-rotate-left"></i>
+                  <span>Restore Default Seed</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Table Selector Tabs -->
+            <div class="flex flex-wrap items-center justify-between gap-4">
+              <div class="flex flex-wrap items-center gap-2">
+                <button id="dbTab_users" onclick="selectDbTable('users')" class="px-4 py-2.5 rounded-xl text-xs font-mono font-semibold bg-emerald-500 text-zinc-950 cursor-pointer transition shadow">
+                  <i class="fa-solid fa-user-shield mr-1.5"></i>users (<span id="dbCount_users">5</span>)
+                </button>
+                <button id="dbTab_treasury_ledger" onclick="selectDbTable('treasury_ledger')" class="px-4 py-2.5 rounded-xl text-xs font-mono font-medium bg-zinc-900 text-zinc-300 hover:text-white border border-white/10 cursor-pointer transition">
+                  <i class="fa-solid fa-Vault mr-1.5 text-amber-400"></i>treasury_ledger (<span id="dbCount_treasury_ledger">5</span>)
+                </button>
+                <button id="dbTab_system_credentials" onclick="selectDbTable('system_credentials')" class="px-4 py-2.5 rounded-xl text-xs font-mono font-medium bg-zinc-900 text-zinc-300 hover:text-white border border-white/10 cursor-pointer transition">
+                  <i class="fa-solid fa-key mr-1.5 text-rose-400"></i>system_credentials (<span id="dbCount_system_credentials">4</span>)
+                </button>
+                <button id="dbTab_audit_events" onclick="selectDbTable('audit_events')" class="px-4 py-2.5 rounded-xl text-xs font-mono font-medium bg-zinc-900 text-zinc-300 hover:text-white border border-white/10 cursor-pointer transition">
+                  <i class="fa-solid fa-clipboard-list mr-1.5 text-emerald-400"></i>audit_events (<span id="dbCount_audit_events">1</span>)
+                </button>
+              </div>
+
+              <span id="dbSchemaDDLBadge" class="text-xs font-mono text-zinc-400 bg-zinc-900 px-3 py-1.5 rounded-lg border border-white/10">
+                PRIMARY KEY: id
+              </span>
+            </div>
+
+            <!-- Table Data Grid -->
+            <div class="kinetix-card rounded-2xl overflow-hidden">
+              <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse text-xs">
+                  <thead id="dbExplorerThead" class="bg-zinc-900/95 text-zinc-400 font-mono border-b border-white/10"></thead>
+                  <tbody id="dbExplorerTbody" class="divide-y divide-white/[0.06] font-mono text-zinc-200"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Two-Column Bottom: Insert Custom User Record + Interactive Custom SQL Console -->
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+              <!-- Insert Record Form (5 Cols) -->
+              <div class="lg:col-span-5 kinetix-card rounded-2xl p-6 space-y-4">
+                <div>
+                  <span class="text-[10px] font-mono uppercase tracking-widest text-emerald-400">Live Row Mutator</span>
+                  <h3 class="text-base font-bold text-white mt-0.5">Insert Custom Record into <code class="text-amber-300 font-mono">users</code></h3>
+                  <p class="text-xs text-zinc-400 mt-0.5">Inserted rows are immediately queryable inside the Pipeline Studio.</p>
+                </div>
+
+                <div class="space-y-3">
+                  <input id="newDbUsername" type="text" placeholder="Username (e.g. zayd.malik)" class="w-full px-3.5 py-2 rounded-xl bg-zinc-950 border border-white/15 text-xs font-mono text-white outline-none focus:border-emerald-400" />
+                  <input id="newDbFullName" type="text" placeholder="Full Name (e.g. Zayd Malik)" class="w-full px-3.5 py-2 rounded-xl bg-zinc-950 border border-white/15 text-xs font-mono text-white outline-none focus:border-emerald-400" />
+                  <div class="grid grid-cols-2 gap-2.5">
+                    <input id="newDbRole" type="text" placeholder="Role (e.g. SecOps Lead)" class="w-full px-3.5 py-2 rounded-xl bg-zinc-950 border border-white/15 text-xs font-mono text-white outline-none focus:border-emerald-400" />
+                    <select id="newDbClearance" class="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-white/15 text-xs font-mono text-white outline-none focus:border-emerald-400">
+                      <option value="LEVEL-5 // OMNI">LEVEL-5 // OMNI</option>
+                      <option value="LEVEL-4 // EXEC">LEVEL-4 // EXEC</option>
+                      <option value="LEVEL-3 // RESTRICTED">LEVEL-3 // RESTRICTED</option>
+                    </select>
+                  </div>
+                  <input id="newDbPin" type="text" placeholder="Vault PIN (e.g. VAULT-7740)" class="w-full px-3.5 py-2 rounded-xl bg-zinc-950 border border-white/15 text-xs font-mono text-white outline-none focus:border-emerald-400" />
+
+                  <button onclick="insertNewDatabaseUser()" class="w-full py-2.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs transition cursor-pointer">
+                    <i class="fa-solid fa-plus mr-1.5"></i>Commit Row to SQLite Table
+                  </button>
+                </div>
+              </div>
+
+              <!-- Interactive Raw SQL Console (7 Cols) -->
+              <div class="lg:col-span-7 kinetix-card rounded-2xl p-6 space-y-4">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <span class="text-[10px] font-mono uppercase tracking-widest text-amber-400">Interactive SQL Console</span>
+                    <h3 class="text-base font-bold text-white mt-0.5">Execute Direct Relational Queries</h3>
+                  </div>
+                  <div class="flex items-center gap-1.5">
+                    <button onclick="setSqlConsolePreset('SELECT id, username, role, clearance_level FROM users WHERE clearance_level LIKE \'%LEVEL-5%\';')" class="text-[11px] font-mono px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-white/10 cursor-pointer">
+                      Filter Level-5
+                    </button>
+                    <button onclick="setSqlConsolePreset('SELECT tx_id, account_code, recipient, amount_usd, status FROM treasury_ledger ORDER BY amount_usd DESC;')" class="text-[11px] font-mono px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-white/10 cursor-pointer">
+                      Top Wires
+                    </button>
+                    <button onclick="setSqlConsolePreset('SELECT service_name, environment, secret_token FROM system_credentials;')" class="text-[11px] font-mono px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-amber-300 border border-amber-500/20 cursor-pointer">
+                      Query Secrets
+                    </button>
+                  </div>
+                </div>
+
+                <textarea
+                  id="customSqlTextarea"
+                  rows="3"
+                  class="w-full p-3.5 rounded-xl bg-zinc-950 border border-white/15 focus:border-amber-400 font-mono text-xs text-emerald-300 outline-none"
+                >SELECT id, username, full_name, role, clearance_level FROM users;</textarea>
+
+                <div class="flex items-center justify-between">
+                  <span id="sqlConsoleStatus" class="text-xs font-mono text-zinc-400">Ready to execute on in-browser SQLite.</span>
+                  <button onclick="runCustomSqlConsole()" class="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs cursor-pointer transition">
+                    <i class="fa-solid fa-terminal mr-1.5"></i>Run SQL Statement
+                  </button>
+                </div>
+
+                <div class="overflow-x-auto rounded-xl border border-white/10 bg-zinc-950 max-h-52">
+                  <table class="w-full text-left border-collapse text-xs">
+                    <thead id="sqlConsoleThead" class="bg-zinc-900 text-zinc-400 font-mono border-b border-white/10"></thead>
+                    <tbody id="sqlConsoleTbody" class="divide-y divide-white/[0.06] font-mono text-zinc-200"></tbody>
+                  </table>
+                </div>
+              </div>
+
+            </div>
+
+          </section>
+
+          <!-- ===============================================================
+               WORKSPACE 3: DEFENSE MATRIX, WAF LAB & CODE PATCHING
+               =============================================================== -->
+          <section id="workspace_defense" class="hidden space-y-6">
+
+            <div class="kinetix-card rounded-2xl p-6">
+              <span class="text-[10px] font-mono uppercase tracking-widest text-emerald-400">Defense-in-Depth &amp; AST Pre-Compilation</span>
+              <h1 class="text-xl font-bold text-white mt-0.5">Interactive Defense Matrix &amp; Code Remediation Lab</h1>
+              <p class="text-xs text-zinc-400 mt-1">
+                Test why naive string filters fail against crafted inputs and why Parameterized Prepared Statements mathematically prevent syntax tree modification.
+              </p>
+            </div>
+
+            <!-- Interactive 4-Layer Defense Simulator -->
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+
+              <!-- Left 6 Cols: Toggleable Security Controls -->
+              <div class="lg:col-span-6 kinetix-card rounded-2xl p-6 space-y-4">
+                <div class="flex items-center justify-between border-b border-white/[0.07] pb-3">
+                  <div>
+                    <h3 class="text-base font-bold text-white">Active Defensive Layers</h3>
+                    <p class="text-xs text-zinc-400">Toggle controls to test their impact on the payload simulator.</p>
+                  </div>
+                  <span class="text-xs font-mono text-amber-400">Interactive Sandbox</span>
+                </div>
+
+                <!-- Layer 1: Naive Keyword Filter -->
+                <div class="p-4 rounded-xl bg-zinc-950 border border-white/10 flex items-start justify-between gap-4">
+                  <div class="space-y-1">
+                    <div class="flex items-center gap-2">
+                      <span class="text-xs font-bold text-white">1. Naive Keyword Blacklist (`OR`, `SELECT`, `UNION`)</span>
+                      <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/15 text-amber-300">Bypassable</span>
+                    </div>
+                    <p class="text-xs text-zinc-400 leading-relaxed">
+                      Strips uppercase SQL keywords. Easily bypassed using mixed case (<code class="text-amber-300 font-mono">oR</code>, <code class="text-amber-300 font-mono">uNiOn</code>) or symbolic operators (<code class="text-amber-300 font-mono">||</code>).
+                    </p>
+                  </div>
+                  <input id="defToggleKeyword" type="checkbox" onchange="evaluateDefenseMatrix()" class="w-4 h-4 accent-amber-500 mt-1 cursor-pointer" />
+                </div>
+
+                <!-- Layer 2: Comment Stripper -->
+                <div class="p-4 rounded-xl bg-zinc-950 border border-white/10 flex items-start justify-between gap-4">
+                  <div class="space-y-1">
+                    <div class="flex items-center gap-2">
+                      <span class="text-xs font-bold text-white">2. SQL Comment Sequence Blocker (`--`, `/*`)</span>
+                      <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/15 text-amber-300">Incomplete</span>
+                    </div>
+                    <p class="text-xs text-zinc-400 leading-relaxed">
+                      Blocks queries containing inline comment tokens. Fails against well-formed boolean tautologies like <code class="text-rose-300 font-mono">' OR 'a'='a</code> that balance quotes without comments.
+                    </p>
+                  </div>
+                  <input id="defToggleComment" type="checkbox" onchange="evaluateDefenseMatrix()" class="w-4 h-4 accent-amber-500 mt-1 cursor-pointer" />
+                </div>
+
+                <!-- Layer 3: Strict Parameterized Prepared Statement -->
+                <div class="p-4 rounded-xl bg-emerald-950/20 border border-emerald-500/30 flex items-start justify-between gap-4">
+                  <div class="space-y-1">
+                    <div class="flex items-center gap-2">
+                      <span class="text-xs font-bold text-emerald-300">3. Parameterized Prepared Statements (`$1, $2`)</span>
+                      <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300">Mathematically Sound</span>
+                    </div>
+                    <p class="text-xs text-zinc-300 leading-relaxed">
+                      Compiles the SQL Abstract Syntax Tree on the database server <em>before</em> binding parameters. User input is strictly treated as a scalar literal value.
+                    </p>
+                  </div>
+                  <input id="defTogglePrepared" type="checkbox" checked onchange="evaluateDefenseMatrix()" class="w-4 h-4 accent-emerald-500 mt-1 cursor-pointer" />
+                </div>
+              </div>
+
+              <!-- Right 6 Cols: Live Filter Evaluation Sandbox -->
+              <div class="lg:col-span-6 kinetix-card rounded-2xl p-6 space-y-4">
+                <div>
+                  <span class="text-[10px] font-mono uppercase tracking-widest text-amber-400">Live Filter Evaluation</span>
+                  <h3 class="text-base font-bold text-white mt-0.5">Test Input Against Active Defense Stack</h3>
+                </div>
+
+                <div class="space-y-2">
+                  <label class="text-xs font-medium text-zinc-300">Test Input Vector:</label>
+                  <input
+                    id="defenseTestInput"
+                    type="text"
+                    value="elena.rostova' oR 'a'='a"
+                    oninput="evaluateDefenseMatrix()"
+                    class="w-full px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-white/15 font-mono text-xs text-white outline-none focus:border-amber-400"
+                  />
+                  <div class="flex flex-wrap gap-1.5 pt-1">
+                    <button onclick="setDefenseInput(`elena.rostova' oR 'a'='a`)" class="text-[11px] font-mono px-2.5 py-1 rounded bg-zinc-900 hover:bg-zinc-800 text-amber-300 border border-white/10 cursor-pointer">
+                      Mixed-Case Bypass (' oR 'a'='a)
+                    </button>
+                    <button onclick="setDefenseInput(`viktor.kane' --`)" class="text-[11px] font-mono px-2.5 py-1 rounded bg-zinc-900 hover:bg-zinc-800 text-rose-300 border border-white/10 cursor-pointer">
+                      Comment Vector (viktor.kane' --)
+                    </button>
+                    <button onclick="setDefenseInput(`O'Connor`)" class="text-[11px] font-mono px-2.5 py-1 rounded bg-zinc-900 hover:bg-zinc-800 text-emerald-300 border border-white/10 cursor-pointer">
+                      Legitimate Name with Quote (O'Connor)
+                    </button>
+                  </div>
+                </div>
+
+                <div id="defenseEvaluationOutput" class="space-y-2.5 pt-2">
+                  <!-- Populated dynamically -->
+                </div>
+              </div>
+
+            </div>
+
+            <!-- Multi-Language Side-by-Side Code Comparison -->
+            <div class="kinetix-card rounded-2xl p-6 space-y-5">
+              <div class="flex flex-wrap items-center justify-between gap-4 border-b border-white/[0.07] pb-4">
+                <div>
+                  <span class="text-[10px] font-mono uppercase tracking-widest text-emerald-400">Production Engineering Patterns</span>
+                  <h3 class="text-base font-bold text-white mt-0.5">Side-by-Side Vulnerable vs. Parameterized Driver Code</h3>
+                </div>
+
+                <div class="flex items-center gap-1.5 bg-zinc-950 p-1 rounded-xl border border-white/10">
+                  <button id="codeLang_node" onclick="selectRemediationLang('node')" class="px-3 py-1.5 rounded-lg text-xs font-mono font-semibold bg-amber-500 text-zinc-950 cursor-pointer">
+                    Node.js (pg)
+                  </button>
+                  <button id="codeLang_python" onclick="selectRemediationLang('python')" class="px-3 py-1.5 rounded-lg text-xs font-mono font-medium text-zinc-400 hover:text-white cursor-pointer">
+                    Python (sqlite3)
+                  </button>
+                  <button id="codeLang_php" onclick="selectRemediationLang('php')" class="px-3 py-1.5 rounded-lg text-xs font-mono font-medium text-zinc-400 hover:text-white cursor-pointer">
+                    PHP (PDO)
+                  </button>
+                  <button id="codeLang_java" onclick="selectRemediationLang('java')" class="px-3 py-1.5 rounded-lg text-xs font-mono font-medium text-zinc-400 hover:text-white cursor-pointer">
+                    Java (JDBC)
+                  </button>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div class="space-y-2">
+                  <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="text-rose-400 font-semibold"><i class="fa-solid fa-xmark-circle mr-1.5"></i>VULNERABLE: Dynamic String Concatenation</span>
+                    <span class="text-zinc-500">CWE-89 Susceptible</span>
+                  </div>
+                  <pre id="remediationVulnerableCode" class="p-4 rounded-xl bg-zinc-950 border border-rose-500/30 font-mono text-xs leading-relaxed text-zinc-300 overflow-x-auto"></pre>
+                </div>
+
+                <div class="space-y-2">
+                  <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="text-emerald-400 font-semibold"><i class="fa-solid fa-check-circle mr-1.5"></i>SECURE: Pre-Compiled Prepared Statement</span>
+                    <span class="text-zinc-500">AST Structure Locked</span>
+                  </div>
+                  <pre id="remediationSecureCode" class="p-4 rounded-xl bg-zinc-950 border border-emerald-500/30 font-mono text-xs leading-relaxed text-zinc-300 overflow-x-auto"></pre>
+                </div>
+              </div>
+            </div>
+
+          </section>
+
+          <!-- ===============================================================
+               WORKSPACE 4: SECURITY TELEMETRY & EXPORTABLE AUDIT REPORT
+               =============================================================== -->
+          <section id="workspace_telemetry" class="hidden space-y-6">
+
+            <div class="kinetix-card rounded-2xl p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <span class="text-[10px] font-mono uppercase tracking-widest text-amber-400">Session Verification &amp; Forensics</span>
+                <h1 class="text-xl font-bold text-white mt-0.5">Security Telemetry &amp; Exportable Audit Log</h1>
+                <p class="text-xs text-zinc-400 mt-1">
+                  Review every query executed during your session, inspect AST drift verdicts, or export a structured JSON audit report.
+                </p>
+              </div>
+              <button onclick="exportSessionAuditReport()" class="px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs flex items-center gap-2 self-start sm:self-center cursor-pointer transition shadow-lg">
+                <i class="fa-solid fa-download"></i>
+                <span>Export Audit Report (.JSON)</span>
+              </button>
+            </div>
+
+            <!-- 4 KPI Cards -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div class="kinetix-card rounded-2xl p-5">
+                <div class="text-[11px] font-mono text-zinc-400 uppercase">Total Queries Executed</div>
+                <div id="kpiTotalQueries" class="text-2xl font-mono font-bold text-white mt-1">1</div>
+                <div class="text-[11px] text-emerald-400 mt-1">100% In-Browser SQLite</div>
+              </div>
+              <div class="kinetix-card rounded-2xl p-5">
+                <div class="text-[11px] font-mono text-zinc-400 uppercase">AST Structure Drifts</div>
+                <div id="kpiAstDrifts" class="text-2xl font-mono font-bold text-rose-400 mt-1">0</div>
+                <div class="text-[11px] text-zinc-400 mt-1">Detected in String Concat Mode</div>
+              </div>
+              <div class="kinetix-card rounded-2xl p-5">
+                <div class="text-[11px] font-mono text-zinc-400 uppercase">Neutralized via Prepared ($1)</div>
+                <div id="kpiNeutralized" class="text-2xl font-mono font-bold text-emerald-400 mt-1">0</div>
+                <div class="text-[11px] text-zinc-400 mt-1">Payloads Bound as Scalar Literals</div>
+              </div>
+              <div class="kinetix-card rounded-2xl p-5">
+                <div class="text-[11px] font-mono text-zinc-400 uppercase">Avg Pipeline Latency</div>
+                <div class="text-2xl font-mono font-bold text-amber-300 mt-1">1.2 ms</div>
+                <div class="text-[11px] text-zinc-400 mt-1">Zero External Network Dependency</div>
+              </div>
+            </div>
+
+            <!-- Session Audit Log Table -->
+            <div class="kinetix-card rounded-2xl p-6 space-y-4">
+              <h3 class="text-base font-bold text-white">Chronological Query &amp; AST Audit Trail</h3>
+              <div class="overflow-x-auto rounded-xl border border-white/10 bg-zinc-950">
+                <table class="w-full text-left border-collapse text-xs">
+                  <thead class="bg-zinc-900 text-zinc-400 font-mono border-b border-white/10">
+                    <tr>
+                      <th class="py-3 px-4">Event ID</th>
+                      <th class="py-3 px-4">Timestamp</th>
+                      <th class="py-3 px-4">Endpoint</th>
+                      <th class="py-3 px-4">Driver Mode</th>
+                      <th class="py-3 px-4">Input Payload</th>
+                      <th class="py-3 px-4">AST Verdict</th>
+                      <th class="py-3 px-4">Rows</th>
+                    </tr>
+                  </thead>
+                  <tbody id="telemetryAuditTbody" class="divide-y divide-white/[0.06] font-mono text-zinc-200"></tbody>
+                </table>
+              </div>
+            </div>
+
+          </section>
+
+        </div>
+      </div>
+
+    </main>
+
+    <!-- ===================================================================
+         RIGHT COLLAPSIBLE TECHNICAL INSPECTOR DRAWER
+         =================================================================== -->
+    <aside id="rightInspectorDrawer" class="w-80 lg:w-96 shrink-0 bg-[#0d0d10] border-l border-white/[0.08] flex flex-col justify-between transition-all duration-300 z-20 hidden xl:flex">
+      <div class="p-4 border-b border-white/[0.07] flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <i class="fa-solid fa-microscope text-emerald-400 text-xs"></i>
+          <span class="text-xs font-bold uppercase tracking-wider text-white">Technical Inspector</span>
+        </div>
+        <button onclick="toggleInspectorDrawer()" class="text-zinc-400 hover:text-white text-xs cursor-pointer">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div class="flex-1 overflow-y-auto p-4 space-y-5">
+
+        <!-- 1. Plain-English Under-The-Hood Breakdown -->
+        <div class="space-y-2">
+          <span class="text-[10px] font-mono uppercase tracking-widest text-amber-400">What Is Happening Under The Hood</span>
+          <div id="drawerPlainEnglishBox" class="p-3.5 rounded-xl bg-zinc-900/90 border border-white/10 text-xs text-zinc-300 leading-relaxed space-y-2">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+
+        <!-- 2. Simulated HTTP Wire Packet -->
+        <div class="space-y-2">
+          <span class="text-[10px] font-mono uppercase tracking-widest text-emerald-400">Raw HTTP Request &amp; Wire Payload</span>
+          <pre id="drawerHttpPacketBox" class="p-3.5 rounded-xl bg-zinc-950 border border-white/10 font-mono text-[11px] text-zinc-300 overflow-x-auto leading-relaxed"></pre>
+        </div>
+
+        <!-- 3. Live Execution Stream -->
+        <div class="space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-[10px] font-mono uppercase tracking-widest text-zinc-400">Live Engine Telemetry Stream</span>
+            <button onclick="clearDrawerLogs()" class="text-[10px] font-mono text-zinc-500 hover:text-zinc-300 cursor-pointer">Clear</button>
+          </div>
+          <div id="drawerLogStream" class="space-y-2 max-h-64 overflow-y-auto pr-1">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+
+      </div>
+
+      <div class="p-3.5 border-t border-white/[0.07] bg-[#0a0a0c] text-[11px] font-mono text-zinc-400 flex items-center justify-between">
+        <span>Shortcut: <strong class="text-zinc-200">Ctrl + Enter</strong> to Execute</span>
+        <span class="text-emerald-400">SQLite 3.45</span>
+      </div>
+    </aside>
+
+  </div>
+
+  <!-- =====================================================================
+       APPLICATION JAVASCRIPT: RELATIONAL ENGINE, AST GRAPH & STUDIO LOGIC
+       ===================================================================== -->
+  <script>
+    /*************************************************************************
+     * 1. ENTERPRISE SEED DATA FOR THE 4 RELATIONAL TABLES
+     *************************************************************************/
+    const initialDatabaseSeed = {
+      users: [
+        { id: 101, username: 'elena.rostova', full_name: 'Dr. Elena Rostova', role: 'Chief Cryptography Officer', clearance_level: 'LEVEL-5 // OMNI', vault_pin: 'VAULT-9920', mfa_seed: 'TOTP-8821-X9' },
+        { id: 102, username: 'viktor.kane', full_name: 'Viktor Kane', role: 'VP of Treasury Operations', clearance_level: 'LEVEL-5 // OMNI', vault_pin: 'VAULT-4410', mfa_seed: 'TOTP-1904-K2' },
+        { id: 103, username: 'aria.chen', full_name: 'Aria Chen', role: 'Principal AppSec Architect', clearance_level: 'LEVEL-4 // EXEC', vault_pin: 'VAULT-3108', mfa_seed: 'TOTP-5501-M7' },
+        { id: 104, username: 'marcus.vance', full_name: 'Marcus Vance', role: 'Lead Quantitative Auditor', clearance_level: 'LEVEL-3 // RESTRICTED', vault_pin: 'VAULT-7729', mfa_seed: 'TOTP-3319-P4' },
+        { id: 105, username: 'root.warden', full_name: 'System Sovereign Daemon', role: 'Autonomous Key Custodian', clearance_level: 'LEVEL-5 // OMNI', vault_pin: 'VAULT-0001', mfa_seed: 'TOTP-9999-Z0' }
+      ],
+      treasury_ledger: [
+        { tx_id: 'TX-9081', account_code: 'ACC-ZURICH-01', recipient: 'Helios Quantum Foundry', amount_usd: 4850000, classification: 'RESTRICTED', status: 'SETTLED', authorized_by: 'viktor.kane' },
+        { tx_id: 'TX-9082', account_code: 'ACC-GENEVA-04', recipient: 'Aegis Orbital Sovereign', amount_usd: 12400000, classification: 'SOVEREIGN', status: 'CLEARED', authorized_by: 'elena.rostova' },
+        { tx_id: 'TX-9083', account_code: 'ACC-SINGAPORE-09', recipient: 'Meridian Silicon Labs', amount_usd: 920000, classification: 'INTERNAL', status: 'SETTLED', authorized_by: 'marcus.vance' },
+        { tx_id: 'TX-9084', account_code: 'ACC-LONDON-02', recipient: 'Vanguard Cyber Defense', amount_usd: 1750000, classification: 'INTERNAL', status: 'PENDING', authorized_by: 'aria.chen' },
+        { tx_id: 'TX-9085', account_code: 'ACC-ZURICH-01', recipient: 'Blackstone Cold Storage', amount_usd: 29000000, classification: 'SOVEREIGN', status: 'CLEARED', authorized_by: 'root.warden' }
+      ],
+      system_credentials: [
+        { key_id: 'SEC-01', service_name: 'AWS_PROD_KMS_MASTER', environment: 'eu-central-1', secret_token: 'ak_live_9948102948109284_x99', rotation_date: '2026-12-01' },
+        { key_id: 'SEC-02', service_name: 'SWIFT_HSM_SIGNING_KEY', environment: 'zurich-vault-hsm', secret_token: 'hsm_priv_8831049182049182_v2', rotation_date: '2026-11-30' },
+        { key_id: 'SEC-03', service_name: 'STRIPE_TREASURY_ROOT', environment: 'global-settlement', secret_token: 'rk_live_51Nx9920192839102_sec', rotation_date: '2026-12-15' },
+        { key_id: 'SEC-04', service_name: 'INTERNAL_JWT_HMAC_512', environment: 'zero-trust-edge', secret_token: 'jwt_sha512_774819204918204_k0', rotation_date: '2027-01-10' }
+      ],
+      audit_events: []
+    };
+
+    /*************************************************************************
+     * 2. STUDIO GLOBAL STATE
+     *************************************************************************/
+    const studioState = {
+      activeWorkspace: 'pipeline', // 'pipeline' | 'database' | 'defense' | 'telemetry'
+      executionMode: 'concat',     // 'concat' | 'param'
+      endpointScenario: 'auth',    // 'auth' | 'ledger' | 'staff'
+      activeDbTable: 'users',      // 'users' | 'treasury_ledger' | 'system_credentials' | 'audit_events'
+      remediationLang: 'node',     // 'node' | 'python' | 'php' | 'java'
+      guideStep: 1,                // 1..4
+      guideVisible: true,
+      leftSidebarOpen: true,
+      rightDrawerOpen: true,
+      sqliteDb: null,              // Real sql.js Database instance when initialized
+      mirrorDb: null,              // Instant synchronous relational mirror
+      metrics: {
+        totalQueries: 0,
+        astDrifts: 0,
+        neutralizedPayloads: 0
+      }
+    };
+
+    /*************************************************************************
+     * 3. INITIALIZE SQLITE ENGINE & SYNCHRONOUS MIRROR
+     *************************************************************************/
+    function initMirrorDatabase() {
+      studioState.mirrorDb = JSON.parse(JSON.stringify(initialDatabaseSeed));
+      syncMirrorToSqliteWasm();
+      updateAllTableCounts();
+    }
+
+    function syncMirrorToSqliteWasm() {
+      if (!studioState.sqliteDb) return;
+      try {
+        studioState.sqliteDb.run(`
+          DROP TABLE IF EXISTS users;
+          DROP TABLE IF EXISTS treasury_ledger;
+          DROP TABLE IF EXISTS system_credentials;
+          DROP TABLE IF EXISTS audit_events;
+
+          CREATE TABLE users (
+            id INTEGER PRIMARY KEY,
+            username TEXT,
+            full_name TEXT,
+            role TEXT,
+            clearance_level TEXT,
+            vault_pin TEXT,
+            mfa_seed TEXT
+          );
+          CREATE TABLE treasury_ledger (
+            tx_id TEXT PRIMARY KEY,
+            account_code TEXT,
+            recipient TEXT,
+            amount_usd INTEGER,
+            classification TEXT,
+            status TEXT,
+            authorized_by TEXT
+          );
+          CREATE TABLE system_credentials (
+            key_id TEXT PRIMARY KEY,
+            service_name TEXT,
+            environment TEXT,
+            secret_token TEXT,
+            rotation_date TEXT
+          );
+          CREATE TABLE audit_events (
+            event_id TEXT,
+            timestamp TEXT,
+            endpoint TEXT,
+            query_mode TEXT,
+            payload TEXT,
+            ast_status TEXT,
+            rows_returned INTEGER
+          );
+        `);
+
+        const sU = studioState.sqliteDb.prepare("INSERT INTO users VALUES (?, ?, ?, ?, ?, ?, ?)");
+        studioState.mirrorDb.users.forEach(r => sU.run([r.id, r.username, r.full_name, r.role, r.clearance_level, r.vault_pin, r.mfa_seed]));
+        sU.free();
+
+        const sT = studioState.sqliteDb.prepare("INSERT INTO treasury_ledger VALUES (?, ?, ?, ?, ?, ?, ?)");
+        studioState.mirrorDb.treasury_ledger.forEach(r => sT.run([r.tx_id, r.account_code, r.recipient, r.amount_usd, r.classification, r.status, r.authorized_by]));
+        sT.free();
+
+        const sC = studioState.sqliteDb.prepare("INSERT INTO system_credentials VALUES (?, ?, ?, ?, ?)");
+        studioState.mirrorDb.system_credentials.forEach(r => sC.run([r.key_id, r.service_name, r.environment, r.secret_token, r.rotation_date]));
+        sC.free();
+      } catch (e) {
+        console.warn("SQLite sync notice:", e);
+      }
+    }
+
+    async function bootSqlJsWasm() {
+      if (typeof window.initSqlJs !== 'function') return;
+      try {
+        const SQL = await window.initSqlJs({
+          locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${file}`
+        });
+        studioState.sqliteDb = new SQL.Database();
+        syncMirrorToSqliteWasm();
+        document.getElementById('engineStatusLabel').textContent = 'SQLite WASM Active';
+      } catch (err) {
+        // Mirror database is already active and 100% functional
+      }
+    }
+
+    /*************************************************************************
+     * 4. GUIDED STEP-BY-STEP WORKFLOW COACH
+     *************************************************************************/
+    const guideStepsData = [
+      {
+        step: 1,
+        badge: '01/04',
+        title: 'Step 1: Select an Application Endpoint & Test Payload',
+        desc: 'In the <strong>Application Request Simulator</strong> (left card), choose an endpoint or click <strong>"Auto-Demonstrate Step"</strong> to load a test input and see where user strings enter the SQL pipeline.',
+        highlightId: 'panelEndpointBuilder'
+      },
+      {
+        step: 2,
+        badge: '02/04',
+        title: 'Step 2: Trace the 4-Stage Lexical & SQL Execution Pipeline',
+        desc: 'Look at the <strong>Compiled SQL Statement</strong> and <strong>4-Stage Pipeline</strong>. In <em>Raw String Concatenation</em> mode, injected quotes (<code>\'</code>) break out of the data literal and become executable SQL tokens.',
+        highlightId: 'panelSqlCompiler'
+      },
+      {
+        step: 3,
+        badge: '03/04',
+        title: 'Step 3: Inspect the Abstract Syntax Tree (AST) Drift',
+        desc: 'Examine the <strong>Interactive Abstract Syntax Tree (AST)</strong>. Notice how <code>\' OR \'1\'=\'1</code> grafts an unauthorized Crimson Rose branch onto the tree, forcing the WHERE clause to evaluate to TRUE for all rows!',
+        highlightId: 'panelAstTree'
+      },
+      {
+        step: 4,
+        badge: '04/04',
+        title: 'Step 4: Engage Parameterized Binding ($1, $2) & Verify Fix',
+        desc: 'Switch Driver Mode to <strong>Prepared Statement ($1, $2)</strong> (or click Auto-Demonstrate). The database locks the AST structure <em>before</em> binding parameters, neutralizing the injection completely.',
+        highlightId: 'globalModeSwitcher'
+      }
+    ];
+
+    function renderGuideStep() {
+      const info = guideStepsData[studioState.guideStep - 1];
+      document.getElementById('guideStepBadge').textContent = info.badge;
+      document.getElementById('guideStepTitle').innerHTML = info.title;
+      document.getElementById('guideStepDescription').innerHTML = info.desc;
+
+      // Clear previous spotlight rings
+      ['panelEndpointBuilder', 'panelSqlCompiler', 'panelAstTree', 'globalModeSwitcher'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.remove('coach-spotlight');
+      });
+
+      const targetEl = document.getElementById(info.highlightId);
+      if (targetEl && studioState.activeWorkspace === 'pipeline') {
+        targetEl.classList.add('coach-spotlight');
+      }
+    }
+
+    function changeGuideStep(delta) {
+      studioState.guideStep += delta;
+      if (studioState.guideStep > 4) studioState.guideStep = 1;
+      if (studioState.guideStep < 1) studioState.guideStep = 4;
+      if (studioState.activeWorkspace !== 'pipeline') {
+        switchWorkspace('pipeline');
+      }
+      renderGuideStep();
+    }
+
+    function autoDemonstrateCurrentStep() {
+      if (studioState.activeWorkspace !== 'pipeline') {
+        switchWorkspace('pipeline');
+      }
+      if (studioState.guideStep === 1) {
+        setExecutionMode('concat');
+        loadStudioPreset('valid');
+        showToast('Step 1 Demonstrated', 'Loaded standard valid credentials for Dr. Elena Rostova.');
+      } else if (studioState.guideStep === 2) {
+        setExecutionMode('concat');
+        loadStudioPreset('comment');
+        showToast('Step 2 Demonstrated', 'Loaded comment truncation vector (viktor.kane\' --) in String Concat mode.');
+      } else if (studioState.guideStep === 3) {
+        setExecutionMode('concat');
+        loadStudioPreset('tautology');
+        showToast('Step 3 Demonstrated', 'Observe the Crimson Rose OR branch grafted onto the Abstract Syntax Tree.');
+      } else if (studioState.guideStep === 4) {
+        loadStudioPreset('tautology');
+        setExecutionMode('param');
+        showToast('Step 4 Demonstrated', 'Switched to Prepared Statement ($1, $2). AST structure is now locked!');
+      }
+      renderGuideStep();
+    }
+
+    function toggleGuideBar() {
+      const bar = document.getElementById('interactiveGuideBar');
+      studioState.guideVisible = !studioState.guideVisible;
+      if (studioState.guideVisible) {
+        bar.classList.remove('hidden');
+      } else {
+        bar.classList.add('hidden');
+      }
+    }
+
+    /*************************************************************************
+     * 5. CORE RELATIONAL PIPELINE & AST EVALUATION ENGINE
+     *************************************************************************/
+    function analyzeInputAstImpact(primaryVal, secondaryVal) {
+      const combined = `${primaryVal} ${secondaryVal}`;
+      const hasUnion = /UNION\s+SELECT/i.test(combined);
+      const hasTautology = /'\s*OR\s+'?1'?\s*=\s*'?1|'\s*OR\s+'?[a-z0-9]+'?\s*=\s*'?[a-z0-9]+/i.test(combined);
+      const hasComment = /'\s*--/.test(primaryVal);
+      const hasUnescapedQuote = primaryVal.includes("'") || secondaryVal.includes("'");
+
+      if (hasUnion) return { drift: true, type: 'UNION_SELECT', label: 'Multi-Table UNION Graft' };
+      if (hasTautology) return { drift: true, type: 'OR_TAUTOLOGY', label: 'Boolean Tautology Branch' };
+      if (hasComment) return { drift: true, type: 'COMMENT_TRUNCATION', label: 'Comment Clause Truncation' };
+      if (hasUnescapedQuote) return { drift: true, type: 'QUOTE_BREAKOUT', label: 'Unbalanced Quote Breakout' };
+      return { drift: false, type: 'NONE', label: 'Standard Scalar Predicate' };
+    }
+
+    function runQueryAgainstDatabase(primaryVal, secondaryVal, analysis) {
+      const scen = studioState.endpointScenario;
+
+      // Columns per scenario
+      const colsMap = {
+        auth: ['id', 'username', 'full_name', 'role', 'clearance_level', 'vault_pin', 'mfa_seed'],
+        ledger: ['tx_id', 'account_code', 'recipient', 'amount_usd', 'classification', 'status', 'authorized_by'],
+        staff: ['id', 'username', 'full_name', 'role', 'clearance_level', 'vault_pin', 'mfa_seed']
+      };
+      const columns = colsMap[scen];
+
+      // MODE A: PARAMETERIZED PREPARED STATEMENT ($1, $2)
+      if (studioState.executionMode === 'param') {
+        if (studioState.sqliteDb) {
+          try {
+            let stmt;
+            if (scen === 'auth') {
+              stmt = studioState.sqliteDb.prepare("SELECT id, username, full_name, role, clearance_level, vault_pin, mfa_seed FROM users WHERE username = ? AND vault_pin = ?");
+              stmt.bind([primaryVal, secondaryVal]);
+            } else if (scen === 'ledger') {
+              stmt = studioState.sqliteDb.prepare("SELECT tx_id, account_code, recipient, amount_usd, classification, status, authorized_by FROM treasury_ledger WHERE account_code LIKE ? AND classification LIKE ?");
+              stmt.bind([`%${primaryVal}%`, `%${secondaryVal}%`]);
+            } else {
+              stmt = studioState.sqliteDb.prepare("SELECT id, username, full_name, role, clearance_level, vault_pin, mfa_seed FROM users WHERE role LIKE ? AND clearance_level LIKE ?");
+              stmt.bind([`%${primaryVal}%`, `%${secondaryVal}%`]);
+            }
+            const rows = [];
+            while (stmt.step()) rows.push(stmt.get());
+            stmt.free();
+            return { columns, rows, error: null };
+          } catch (e) {
+            // Fall through to mirror
+          }
+        }
+
+        // Synchronous mirror evaluation for Prepared Statements
+        if (scen === 'auth') {
+          const rows = studioState.mirrorDb.users
+            .filter(u => u.username === primaryVal && u.vault_pin === secondaryVal)
+            .map(u => [u.id, u.username, u.full_name, u.role, u.clearance_level, u.vault_pin, u.mfa_seed]);
+          return { columns, rows, error: null };
+        } else if (scen === 'ledger') {
+          const rows = studioState.mirrorDb.treasury_ledger
+            .filter(t => t.account_code.toLowerCase().includes(primaryVal.toLowerCase()) && t.classification.toLowerCase().includes(secondaryVal.toLowerCase()))
+            .map(t => [t.tx_id, t.account_code, t.recipient, t.amount_usd, t.classification, t.status, t.authorized_by]);
+          return { columns, rows, error: null };
+        } else {
+          const rows = studioState.mirrorDb.users
+            .filter(u => u.role.toLowerCase().includes(primaryVal.toLowerCase()) && u.clearance_level.toLowerCase().includes(secondaryVal.toLowerCase()))
+            .map(u => [u.id, u.username, u.full_name, u.role, u.clearance_level, u.vault_pin, u.mfa_seed]);
+          return { columns, rows, error: null };
+        }
+      }
+
+      // MODE B: RAW STRING CONCATENATION
+      let rawSql = '';
+      if (scen === 'auth') {
+        rawSql = `SELECT id, username, full_name, role, clearance_level, vault_pin, mfa_seed FROM users WHERE username = '${primaryVal}' AND vault_pin = '${secondaryVal}'`;
+      } else if (scen === 'ledger') {
+        rawSql = `SELECT tx_id, account_code, recipient, amount_usd, classification, status, authorized_by FROM treasury_ledger WHERE account_code LIKE '%${primaryVal}%' AND classification LIKE '%${secondaryVal}%'`;
+      } else {
+        rawSql = `SELECT id, username, full_name, role, clearance_level, vault_pin, mfa_seed FROM users WHERE role LIKE '%${primaryVal}%' AND clearance_level LIKE '%${secondaryVal}%'`;
+      }
+
+      if (studioState.sqliteDb) {
+        try {
+          const res = studioState.sqliteDb.exec(rawSql);
+          if (!res || res.length === 0) return { columns, rows: [], error: null };
+          return { columns: res[0].columns, rows: res[0].values, error: null };
+        } catch (err) {
+          return { columns, rows: [], error: err.message };
+        }
+      }
+
+      // Synchronous relational fallback for String Concatenation
+      if (analysis.type === 'UNION_SELECT') {
+        const secretRows = studioState.mirrorDb.system_credentials.map(s => [
+          s.key_id, s.service_name, s.environment, s.secret_token, s.rotation_date, 'EXFILTRATED', 'CRITICAL'
+        ]);
+        return { columns, rows: secretRows, error: null };
+      }
+
+      if (analysis.type === 'OR_TAUTOLOGY') {
+        if (scen === 'ledger') {
+          return {
+            columns,
+            rows: studioState.mirrorDb.treasury_ledger.map(t => [t.tx_id, t.account_code, t.recipient, t.amount_usd, t.classification, t.status, t.authorized_by]),
+            error: null
+          };
+        }
+        return {
+          columns,
+          rows: studioState.mirrorDb.users.map(u => [u.id, u.username, u.full_name, u.role, u.clearance_level, u.vault_pin, u.mfa_seed]),
+          error: null
+        };
+      }
+
+      if (analysis.type === 'COMMENT_TRUNCATION') {
+        const cleanUser = primaryVal.split("'")[0].trim();
+        const matched = studioState.mirrorDb.users
+          .filter(u => u.username === cleanUser)
+          .map(u => [u.id, u.username, u.full_name, u.role, u.clearance_level, u.vault_pin, u.mfa_seed]);
+        return { columns, rows: matched, error: null };
+      }
+
+      // Standard unparameterized evaluation
+      if (scen === 'auth') {
+        const rows = studioState.mirrorDb.users
+          .filter(u => u.username === primaryVal && u.vault_pin === secondaryVal)
+          .map(u => [u.id, u.username, u.full_name, u.role, u.clearance_level, u.vault_pin, u.mfa_seed]);
+        return { columns, rows, error: null };
+      } else if (scen === 'ledger') {
+        const rows = studioState.mirrorDb.treasury_ledger
+          .filter(t => t.account_code.toLowerCase().includes(primaryVal.toLowerCase()) && t.classification.toLowerCase().includes(secondaryVal.toLowerCase()))
+          .map(t => [t.tx_id, t.account_code, t.recipient, t.amount_usd, t.classification, t.status, t.authorized_by]);
+        return { columns, rows, error: null };
+      } else {
+        const rows = studioState.mirrorDb.users
+          .filter(u => u.role.toLowerCase().includes(primaryVal.toLowerCase()) && u.clearance_level.toLowerCase().includes(secondaryVal.toLowerCase()))
+          .map(u => [u.id, u.username, u.full_name, u.role, u.clearance_level, u.vault_pin, u.mfa_seed]);
+        return { columns, rows, error: null };
+      }
+    }
+
+    /*************************************************************************
+     * 6. RENDER PIPELINE, SQL COMPILER & INTERACTIVE AST TREE
+     *************************************************************************/
+    function executeStudioPipeline(recordTelemetry = false) {
+      const primaryVal = document.getElementById('studioPrimaryInput').value;
+      const secondaryVal = document.getElementById('studioSecondaryInput').value;
+      const analysis = analyzeInputAstImpact(primaryVal, secondaryVal);
+      const isParam = studioState.executionMode === 'param';
+      const astDrifted = !isParam && analysis.drift;
+
+      // Execute against SQLite
+      const { columns, rows, error } = runQueryAgainstDatabase(primaryVal, secondaryVal, analysis);
+
+      // Update 4-Stage Pipeline Visuals
+      updateFourStagePipelineUI(primaryVal, secondaryVal, analysis, isParam, astDrifted, rows.length);
+
+      // Update Compiled SQL Box & Diagnostic Banner
+      updateCompiledSqlBoxUI(primaryVal, secondaryVal, analysis, isParam, astDrifted);
+
+      // Render Interactive AST Visual Graph
+      renderAstTreeGraph(primaryVal, secondaryVal, analysis, isParam, astDrifted);
+
+      // Render SQLite Result Table
+      renderStudioResultTable(columns, rows, error);
+
+      // Update Technical Inspector Drawer
+      updateInspectorDrawerUI(primaryVal, secondaryVal, analysis, isParam, astDrifted, rows.length);
+
+      if (recordTelemetry) {
+        recordAuditEvent(primaryVal, secondaryVal, analysis, isParam, astDrifted, rows.length);
+      }
+    }
+
+    function updateFourStagePipelineUI(primaryVal, secondaryVal, analysis, isParam, astDrifted, rowCount) {
+      const scenMeta = {
+        auth: { ep: 'POST /api/v2/auth/verify', tbl: 'users', pKey: 'username' },
+        ledger: { ep: 'GET /api/v2/treasury/ledger', tbl: 'treasury_ledger', pKey: 'account' },
+        staff: { ep: 'GET /api/v2/directory/staff', tbl: 'users', pKey: 'role' }
+      }[studioState.endpointScenario];
+
+      document.getElementById('stage1EndpointLabel').textContent = scenMeta.ep;
+      document.getElementById('stage1PayloadPreview').textContent = `{"${scenMeta.pKey}": "${primaryVal}"}`;
+
+      const s2Card = document.getElementById('stageCard2');
+      const s3Card = document.getElementById('stageCard3');
+      const secBadge = document.getElementById('pipelineSecurityBadge');
+
+      if (astDrifted) {
+        s2Card.className = 'kinetix-subpanel rounded-xl p-4 relative border border-rose-500/60 bg-rose-950/10 transition-all';
+        s3Card.className = 'kinetix-subpanel rounded-xl p-4 relative border border-rose-500/70 bg-rose-950/20 ast-drift-alert transition-all';
+        document.getElementById('stage2TokenCount').textContent = '22 Tokens (Altered)';
+        document.getElementById('stage2Preview').innerHTML = `<span class="text-rose-400 font-semibold">[QUOTE_BREAK] [${analysis.type}]</span>`;
+        document.getElementById('stage3StatusTag').textContent = 'AST DRIFT!';
+        document.getElementById('stage3StatusTag').className = 'text-[10px] font-mono text-rose-400 font-bold';
+        document.getElementById('stage3Preview').innerHTML = `<span class="text-rose-300">${analysis.label}</span>`;
+
+        secBadge.textContent = `AST DRIFT: ${analysis.label}`;
+        secBadge.className = 'px-2.5 py-0.5 rounded-md bg-rose-500/15 text-rose-300 border border-rose-500/40 font-semibold';
+      } else if (isParam) {
+        s2Card.className = 'kinetix-subpanel rounded-xl p-4 relative border border-emerald-500/40 transition-all';
+        s3Card.className = 'kinetix-subpanel rounded-xl p-4 relative border border-emerald-500/40 transition-all';
+        document.getElementById('stage2TokenCount').textContent = 'Pre-Compiled ($1, $2)';
+        document.getElementById('stage2Preview').innerHTML = `<span class="text-emerald-300">[SELECT] [WHERE] [PARAM_$1]</span>`;
+        document.getElementById('stage3StatusTag').textContent = 'AST Locked';
+        document.getElementById('stage3StatusTag').className = 'text-[10px] font-mono text-emerald-400 font-bold';
+        document.getElementById('stage3Preview').innerHTML = `<span class="text-emerald-300">Immutable Parameterized Tree</span>`;
+
+        secBadge.textContent = 'Prepared Statement (AST Locked)';
+        secBadge.className = 'px-2.5 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-semibold';
+      } else {
+        s2Card.className = 'kinetix-subpanel rounded-xl p-4 relative border border-white/10 transition-all';
+        s3Card.className = 'kinetix-subpanel rounded-xl p-4 relative border border-white/10 transition-all';
+        document.getElementById('stage2TokenCount').textContent = '14 Tokens';
+        document.getElementById('stage2Preview').textContent = '[SELECT] [FROM] [WHERE] [AND]';
+        document.getElementById('stage3StatusTag').textContent = 'Nominal';
+        document.getElementById('stage3StatusTag').className = 'text-[10px] font-mono text-amber-300';
+        document.getElementById('stage3Preview').textContent = 'Standard Equality Predicate';
+
+        secBadge.textContent = 'Unparameterized (No Drift In Input)';
+        secBadge.className = 'px-2.5 py-0.5 rounded-md bg-amber-500/15 text-amber-300 border border-amber-500/30';
+      }
+
+      document.getElementById('stage4RowTag').textContent = `${rowCount} Row(s)`;
+      document.getElementById('stage4Preview').textContent = `Fetched ${rowCount} tuple(s) from ${scenMeta.tbl}`;
+    }
+
+    function updateCompiledSqlBoxUI(primaryVal, secondaryVal, analysis, isParam, astDrifted) {
+      const sqlBox = document.getElementById('compiledSqlDisplay');
+      const boundStrip = document.getElementById('boundParamsStrip');
+      const modeBadge = document.getElementById('compilerModeBadge');
+      const diagIcon = document.getElementById('diagIcon');
+      const diagText = document.getElementById('diagText');
+      const scen = studioState.endpointScenario;
+
+      if (isParam) {
+        boundStrip.classList.remove('hidden');
+        document.getElementById('boundChip1').textContent = `$1 = "${primaryVal}"`;
+        document.getElementById('boundChip2').textContent = `$2 = "${secondaryVal}"`;
+
+        modeBadge.textContent = 'Prepared Statement ($1, $2)';
+        modeBadge.className = 'text-xs font-mono px-3 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30';
+
+        if (scen === 'auth') {
+          sqlBox.innerHTML = `<span class="text-amber-400 font-semibold">SELECT</span> id, username, full_name, role, clearance_level, vault_pin <span class="text-amber-400 font-semibold">FROM</span> users <span class="text-amber-400 font-semibold">WHERE</span> username = <span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold">$1</span> <span class="text-amber-400 font-semibold">AND</span> vault_pin = <span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold">$2</span>;`;
+        } else if (scen === 'ledger') {
+          sqlBox.innerHTML = `<span class="text-amber-400 font-semibold">SELECT</span> tx_id, account_code, recipient, amount_usd, classification, status <span class="text-amber-400 font-semibold">FROM</span> treasury_ledger <span class="text-amber-400 font-semibold">WHERE</span> account_code <span class="text-amber-400 font-semibold">LIKE</span> <span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold">$1</span> <span class="text-amber-400 font-semibold">AND</span> classification <span class="text-amber-400 font-semibold">LIKE</span> <span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold">$2</span>;`;
+        } else {
+          sqlBox.innerHTML = `<span class="text-amber-400 font-semibold">SELECT</span> id, username, full_name, role, clearance_level <span class="text-amber-400 font-semibold">FROM</span> users <span class="text-amber-400 font-semibold">WHERE</span> role <span class="text-amber-400 font-semibold">LIKE</span> <span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold">$1</span> <span class="text-amber-400 font-semibold">AND</span> clearance_level <span class="text-amber-400 font-semibold">LIKE</span> <span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold">$2</span>;`;
+        }
+
+        diagIcon.className = 'fa-solid fa-shield-halved text-emerald-400 mt-0.5';
+        diagText.innerHTML = analysis.drift
+          ? `<strong class="text-emerald-300">Injection Vector Neutralized by Pre-Compilation:</strong> Although the input contains SQL metacharacters (<code class="text-amber-300 font-mono">${escapeHtml(primaryVal)}</code>), the database compiled the syntax tree with <code class="text-emerald-300 font-mono">$1</code> and <code class="text-emerald-300 font-mono">$2</code> placeholders beforehand. The database searches for a literal username matching that exact string.`
+          : `<strong class="text-emerald-300">Parameterized Execution Active:</strong> The SQL Abstract Syntax Tree is locked prior to parameter binding. User data cannot alter query logic.`;
+      } else {
+        boundStrip.classList.add('hidden');
+        modeBadge.textContent = astDrifted ? 'AST Structure Drift Detected' : 'Raw String Concatenation';
+        modeBadge.className = astDrifted
+          ? 'text-xs font-mono px-3 py-1 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40 font-semibold'
+          : 'text-xs font-mono px-3 py-1 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30';
+
+        const hasComment = primaryVal.includes('--');
+        if (scen === 'auth') {
+          if (hasComment) {
+            const [beforeComment, ...afterParts] = primaryVal.split('--');
+            sqlBox.innerHTML = `<span class="text-amber-400 font-semibold">SELECT</span> id, username, full_name, role, clearance_level, vault_pin <span class="text-amber-400 font-semibold">FROM</span> users <span class="text-amber-400 font-semibold">WHERE</span> username = '<span class="bg-rose-500/20 text-rose-300 px-1 rounded font-semibold">${escapeHtml(beforeComment)}</span><span class="text-amber-400 font-bold">--</span><span class="text-zinc-600 line-through">${escapeHtml(afterParts.join('--'))}' AND vault_pin = '${escapeHtml(secondaryVal)}'</span>`;
+          } else {
+            sqlBox.innerHTML = `<span class="text-amber-400 font-semibold">SELECT</span> id, username, full_name, role, clearance_level, vault_pin <span class="text-amber-400 font-semibold">FROM</span> users <span class="text-amber-400 font-semibold">WHERE</span> username = '<span class="${astDrifted ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' : 'bg-amber-500/15 text-amber-200'} px-1.5 py-0.5 rounded font-semibold">${escapeHtml(primaryVal)}</span>' <span class="text-amber-400 font-semibold">AND</span> vault_pin = '<span class="bg-amber-500/15 text-amber-200 px-1.5 py-0.5 rounded">${escapeHtml(secondaryVal)}</span>';`;
+          }
+        } else if (scen === 'ledger') {
+          sqlBox.innerHTML = `<span class="text-amber-400 font-semibold">SELECT</span> tx_id, account_code, recipient, amount_usd, classification, status <span class="text-amber-400 font-semibold">FROM</span> treasury_ledger <span class="text-amber-400 font-semibold">WHERE</span> account_code <span class="text-amber-400 font-semibold">LIKE</span> '%<span class="${astDrifted ? 'bg-rose-500/20 text-rose-300' : 'text-amber-200'} px-1 rounded font-semibold">${escapeHtml(primaryVal)}</span>%' <span class="text-amber-400 font-semibold">AND</span> classification <span class="text-amber-400 font-semibold">LIKE</span> '%<span class="text-amber-200">${escapeHtml(secondaryVal)}</span>%';`;
+        } else {
+          sqlBox.innerHTML = `<span class="text-amber-400 font-semibold">SELECT</span> id, username, full_name, role, clearance_level <span class="text-amber-400 font-semibold">FROM</span> users <span class="text-amber-400 font-semibold">WHERE</span> role <span class="text-amber-400 font-semibold">LIKE</span> '%<span class="${astDrifted ? 'bg-rose-500/20 text-rose-300' : 'text-amber-200'} px-1 rounded font-semibold">${escapeHtml(primaryVal)}</span>%';`;
+        }
+
+        if (astDrifted) {
+          diagIcon.className = 'fa-solid fa-triangle-exclamation text-rose-400 mt-0.5';
+          diagText.innerHTML = `<strong class="text-rose-300">Syntax Tree Drift (${analysis.label}):</strong> Because user input was concatenated directly into the SQL command before parsing, the lexical scanner interpreted characters inside <code class="text-rose-300 font-mono">${escapeHtml(primaryVal)}</code> as SQL operators rather than literal text. Switch to <strong>Prepared Statement ($1, $2)</strong> to lock the AST.`;
+        } else {
+          diagIcon.className = 'fa-solid fa-circle-info text-amber-400 mt-0.5';
+          diagText.innerHTML = `<strong class="text-amber-300">Unparameterized Concatenation Active:</strong> This query currently works with benign input, but the syntax tree is unprotected. Click any of the <strong>One-Click Test Vectors</strong> on the left to observe how special characters alter the AST.`;
+        }
+      }
+    }
+
+    function renderAstTreeGraph(primaryVal, secondaryVal, analysis, isParam, astDrifted) {
+      const container = document.getElementById('astGraphContainer');
+      const tableName = studioState.endpointScenario === 'ledger' ? 'treasury_ledger' : 'users';
+      const col1 = studioState.endpointScenario === 'auth' ? 'username' : (studioState.endpointScenario === 'ledger' ? 'account_code' : 'role');
+      const col2 = studioState.endpointScenario === 'auth' ? 'vault_pin' : (studioState.endpointScenario === 'ledger' ? 'classification' : 'clearance_level');
+
+      if (isParam) {
+        container.innerHTML = `
+          <div class="ast-node-anim flex flex-col items-center space-y-4">
+            <!-- Root Node -->
+            <div class="px-4 py-2 rounded-xl bg-zinc-900 border border-emerald-500/40 text-xs font-mono text-white flex items-center gap-2 shadow">
+              <i class="fa-solid fa-lock text-emerald-400"></i>
+              <span>SELECT_STATEMENT (Pre-Compiled AST)</span>
+            </div>
+
+            <div class="h-4 w-px bg-emerald-500/40"></div>
+
+            <!-- Second Level: FROM + WHERE -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-2xl">
+              <div class="p-3.5 rounded-xl bg-zinc-900/80 border border-white/10 text-center font-mono text-xs">
+                <div class="text-[10px] text-zinc-500 uppercase">Target Relation</div>
+                <div class="text-amber-300 font-semibold mt-0.5">FROM_TABLE: ${tableName}</div>
+              </div>
+
+              <div class="p-3.5 rounded-xl bg-emerald-950/20 border border-emerald-500/40 text-center font-mono text-xs">
+                <div class="text-[10px] text-emerald-400 uppercase">Locked Logical Operator</div>
+                <div class="text-white font-semibold mt-0.5">WHERE_CLAUSE (Logical AND)</div>
+              </div>
+            </div>
+
+            <div class="h-4 w-px bg-emerald-500/40"></div>
+
+            <!-- Leaf Bound Nodes -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-2xl">
+              <div class="p-3 rounded-xl bg-zinc-950 border border-emerald-500/30 font-mono text-xs flex items-center justify-between">
+                <span class="text-zinc-400">${col1} =</span>
+                <span class="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 font-semibold truncate max-w-[200px]" title="${escapeHtml(primaryVal)}">
+                  SCALAR_PARAM($1): "${escapeHtml(primaryVal)}"
+                </span>
+              </div>
+              <div class="p-3 rounded-xl bg-zinc-950 border border-emerald-500/30 font-mono text-xs flex items-center justify-between">
+                <span class="text-zinc-400">${col2} =</span>
+                <span class="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 font-semibold truncate max-w-[200px]" title="${escapeHtml(secondaryVal)}">
+                  SCALAR_PARAM($2): "${escapeHtml(secondaryVal)}"
+                </span>
+              </div>
+            </div>
+          </div>
+        `;
+        return;
+      }
+
+      // Raw Concatenation AST Rendering
+      if (astDrifted && analysis.type === 'OR_TAUTOLOGY') {
+        container.innerHTML = `
+          <div class="ast-node-anim flex flex-col items-center space-y-4">
+            <div class="px-4 py-2 rounded-xl bg-rose-950/30 border border-rose-500/50 text-xs font-mono text-rose-200 flex items-center gap-2">
+              <i class="fa-solid fa-triangle-exclamation text-rose-400"></i>
+              <span>SELECT_STATEMENT (Modified by Unescaped String Input)</span>
+            </div>
+
+            <div class="h-4 w-px bg-rose-500/50"></div>
+
+            <!--Hijacked Root Operator: OR replaces intended AND root-->
+            <div class="p-3.5 rounded-xl bg-rose-950/30 border border-rose-500/60 text-center font-mono text-xs ast-drift-alert max-w-md w-full">
+              <div class="text-[10px] text-rose-300 uppercase">Injected Root Predicate Operator</div>
+              <div class="text-white font-bold mt-0.5">LOGICAL_OR (Evaluates TRUE for Every Row!)</div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-2xl pt-1">
+              <div class="p-3 rounded-xl bg-zinc-900/90 border border-white/10 font-mono text-xs">
+                <div class="text-[10px] text-zinc-400">Original Left Branch</div>
+                <div class="text-zinc-200 mt-1">${col1} = '${escapeHtml(primaryVal.split("'")[0])}'</div>
+              </div>
+              <div class="p-3 rounded-xl bg-rose-950/40 border border-rose-500/60 font-mono text-xs">
+                <div class="text-[10px] text-rose-300 font-bold uppercase">Grafted Injected Branch</div>
+                <div class="text-rose-200 font-bold mt-1">TAUTOLOGY: '1' = '1' (ALWAYS TRUE)</div>
+              </div>
+            </div>
+          </div>
+        `;
+      } else if (astDrifted && analysis.type === 'COMMENT_TRUNCATION') {
+        const cleanUser = primaryVal.split("'")[0];
+        container.innerHTML = `
+          <div class="ast-node-anim flex flex-col items-center space-y-4">
+            <div class="px-4 py-2 rounded-xl bg-amber-950/30 border border-amber-500/50 text-xs font-mono text-amber-200 flex items-center gap-2">
+              <i class="fa-solid fa-scissors text-amber-400"></i>
+              <span>SELECT_STATEMENT (Right Predicate Pruned via Comment --)</span>
+            </div>
+
+            <div class="h-4 w-px bg-amber-500/50"></div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-2xl">
+              <div class="p-3.5 rounded-xl bg-amber-950/20 border border-amber-500/50 font-mono text-xs">
+                <div class="text-[10px] text-amber-400 uppercase font-bold">Active Predicate Node</div>
+                <div class="text-white font-semibold mt-1">${col1} = '${escapeHtml(cleanUser)}'</div>
+              </div>
+              <div class="p-3.5 rounded-xl bg-zinc-950 border border-zinc-800 font-mono text-xs opacity-55">
+                <div class="text-[10px] text-zinc-500 uppercase">Commented Out / Ignored by Parser</div>
+                <div class="text-zinc-500 line-through mt-1">-- AND ${col2} = '${escapeHtml(secondaryVal)}'</div>
+              </div>
+            </div>
+          </div>
+        `;
+      } else if (astDrifted && analysis.type === 'UNION_SELECT') {
+        container.innerHTML = `
+          <div class="ast-node-anim flex flex-col items-center space-y-4">
+            <div class="px-4 py-2 rounded-xl bg-rose-950/40 border border-rose-500/60 text-xs font-mono text-rose-200 flex items-center gap-2 ast-drift-alert">
+              <i class="fa-solid fa-code-merge text-rose-400"></i>
+              <span>COMPOUND_QUERY: UNION_OPERATOR (Cross-Table Exfiltration)</span>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-2xl pt-2">
+              <div class="p-3.5 rounded-xl bg-zinc-900 border border-white/10 font-mono text-xs">
+                <div class="text-[10px] text-zinc-400 uppercase">Query 1 (Intended Table)</div>
+                <div class="text-zinc-200 mt-1">SELECT ... FROM ${tableName}</div>
+              </div>
+              <div class="p-3.5 rounded-xl bg-rose-950/40 border border-rose-500/60 font-mono text-xs">
+                <div class="text-[10px] text-rose-300 font-bold uppercase">Query 2 (Injected UNION Branch)</div>
+                <div class="text-rose-200 font-bold mt-1">SELECT secret_token FROM system_credentials</div>
+              </div>
+            </div>
+          </div>
+        `;
+      } else {
+        // Nominal Concatenated Tree
+        container.innerHTML = `
+          <div class="ast-node-anim flex flex-col items-center space-y-4">
+            <div class="px-4 py-2 rounded-xl bg-zinc-900 border border-white/15 text-xs font-mono text-zinc-200 flex items-center gap-2">
+              <i class="fa-solid fa-sitemap text-amber-400"></i>
+              <span>SELECT_STATEMENT (Unparameterized String Tree)</span>
+            </div>
+
+            <div class="h-4 w-px bg-zinc-700"></div>
+
+            <div class="p-3 rounded-xl bg-zinc-900/90 border border-white/10 text-center font-mono text-xs max-w-sm w-full">
+              <div class="text-[10px] text-amber-400 uppercase">WHERE Predicate</div>
+              <div class="text-white font-semibold mt-0.5">LOGICAL_AND</div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-2xl">
+              <div class="p-3 rounded-xl bg-zinc-950 border border-white/10 font-mono text-xs flex items-center justify-between">
+                <span class="text-zinc-400">${col1} =</span>
+                <span class="text-amber-300">'${escapeHtml(primaryVal)}'</span>
+              </div>
+              <div class="p-3 rounded-xl bg-zinc-950 border border-white/10 font-mono text-xs flex items-center justify-between">
+                <span class="text-zinc-400">${col2} =</span>
+                <span class="text-amber-300">'${escapeHtml(secondaryVal)}'</span>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    function renderStudioResultTable(columns, rows, error) {
+      const thead = document.getElementById('studioResultThead');
+      const tbody = document.getElementById('studioResultTbody');
+      const badge = document.getElementById('resultRowCountBadge');
+
+      thead.innerHTML = `
+        <tr>
+          ${columns.map(c => `<th class="py-3 px-4 uppercase tracking-wider text-[11px]">${escapeHtml(c)}</th>`).join('')}
+        </tr>
+      `;
+
+      if (error) {
+        badge.textContent = 'SQLite Parser Error';
+        badge.className = 'text-xs font-mono px-2.5 py-0.5 rounded-full bg-rose-500/15 text-rose-300 border border-rose-500/30';
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="${columns.length}" class="py-6 px-4 text-center text-rose-400 bg-rose-950/20">
+              <i class="fa-solid fa-circle-exclamation mr-1.5"></i>SQLite Syntax Error: ${escapeHtml(error)}
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      badge.textContent = `${rows.length} Row${rows.length === 1 ? '' : 's'} Returned`;
+      badge.className = rows.length > 1 && studioState.executionMode === 'concat'
+        ? 'text-xs font-mono px-2.5 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40 font-semibold'
+        : 'text-xs font-mono px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30';
+
+      if (rows.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="${columns.length}" class="py-8 px-4 text-center text-zinc-500">
+              0 records matched the predicate in SQLite storage.
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      tbody.innerHTML = rows.map(r => `
+        <tr class="hover:bg-white/[0.03] transition">
+          ${r.map((cell, idx) => `
+            <td class="py-3 px-4 ${idx === 1 ? 'font-semibold text-white' : (idx === 4 ? 'text-amber-300' : 'text-zinc-300')}">
+              ${escapeHtml(String(cell))}
+            </td>
+          `).join('')}
+        </tr>
+      `).join('');
+    }
+
+    /*************************************************************************
+     * 7. TECHNICAL INSPECTOR DRAWER & TELEMETRY LOGGING
+     *************************************************************************/
+    function updateInspectorDrawerUI(primaryVal, secondaryVal, analysis, isParam, astDrifted, rowCount) {
+      const explainBox = document.getElementById('drawerPlainEnglishBox');
+      const httpBox = document.getElementById('drawerHttpPacketBox');
+
+      if (isParam) {
+        explainBox.innerHTML = `
+          <div class="font-semibold text-emerald-300">1. Pre-Compiled Syntax Tree</div>
+          <p>The database driver sent the SQL template with <code class="text-emerald-300 font-mono">$1, $2</code> placeholders first. SQLite built a fixed execution plan.</p>
+          <div class="font-semibold text-emerald-300 pt-1">2. Safe Scalar Binding</div>
+          <p>Your input (<code class="text-amber-300 font-mono">${escapeHtml(primaryVal)}</code>) was transmitted in a separate binary data packet, so quotes or keywords cannot modify the query tree.</p>
+        `;
+      } else if (astDrifted) {
+        explainBox.innerHTML = `
+          <div class="font-semibold text-rose-300">1. Quote Breakout Detected</div>
+          <p>The single quote inside <code class="text-rose-300 font-mono">${escapeHtml(primaryVal)}</code> prematurely closed the intended SQL string literal.</p>
+          <div class="font-semibold text-rose-300 pt-1">2. AST Structure Hijack (${analysis.label})</div>
+          <p>The characters following the quote were parsed as live SQL instructions, returning <strong>${rowCount} row(s)</strong> from the database.</p>
+        `;
+      } else {
+        explainBox.innerHTML = `
+          <div class="font-semibold text-amber-300">1. Direct String Interpolation</div>
+          <p>The backend pasted <code class="text-amber-300 font-mono">${escapeHtml(primaryVal)}</code> directly into the SQL command string.</p>
+          <div class="font-semibold text-amber-300 pt-1">2. No Metacharacters Present</div>
+          <p>Because this specific input had no quotes or SQL operators, the AST remained nominal and returned ${rowCount} row(s).</p>
+        `;
+      }
+
+      const epMap = {
+        auth: 'POST /api/v2/auth/verify HTTP/1.1',
+        ledger: 'GET /api/v2/treasury/ledger HTTP/1.1',
+        staff: 'GET /api/v2/directory/staff HTTP/1.1'
+      };
+
+      httpBox.textContent = `${epMap[studioState.endpointScenario]}
+Host: kinetix-core.internal:8443
+Content-Type: application/json
+X-Driver-Mode: ${isParam ? 'PREPARED_STATEMENT' : 'RAW_CONCATENATION'}
+
+{
+  "param_1": ${JSON.stringify(primaryVal)},
+  "param_2": ${JSON.stringify(secondaryVal)},
+  "ast_verdict": "${isParam ? 'LOCKED_SAFE' : (astDrifted ? analysis.type : 'NOMINAL')}",
+  "rows_returned": ${rowCount}
+}`;
+    }
+
+    function recordAuditEvent(primaryVal, secondaryVal, analysis, isParam, astDrifted, rowCount) {
+      studioState.metrics.totalQueries += 1;
+      if (astDrifted) studioState.metrics.astDrifts += 1;
+      if (isParam && analysis.drift) studioState.metrics.neutralizedPayloads += 1;
+
+      const evId = `EVT-${1000 + studioState.metrics.totalQueries}`;
+      const timeStr = new Date().toLocaleTimeString();
+      const epMap = { auth: '/api/v2/auth/verify', ledger: '/api/v2/treasury/ledger', staff: '/api/v2/directory/staff' };
+      const verdict = isParam
+        ? (analysis.drift ? 'NEUTRALIZED ($1)' : 'PREPARED_OK')
+        : (astDrifted ? `DRIFT: ${analysis.type}` : 'CONCAT_OK');
+
+      const eventObj = {
+        event_id: evId,
+        timestamp: timeStr,
+        endpoint: epMap[studioState.endpointScenario],
+        query_mode: isParam ? 'Prepared ($1)' : 'String Concat',
+        payload: primaryVal,
+        ast_status: verdict,
+        rows_returned: rowCount
+      };
+
+      studioState.mirrorDb.audit_events.unshift(eventObj);
+
+      // Update Sidebar & KPI Counters
+      document.getElementById('sidebarMetricQueries').textContent = studioState.metrics.totalQueries;
+      document.getElementById('sidebarMetricDrifts').textContent = studioState.metrics.astDrifts;
+      document.getElementById('sidebarAuditBadge').textContent = studioState.mirrorDb.audit_events.length;
+      document.getElementById('inspectorEventCount').textContent = studioState.mirrorDb.audit_events.length;
+
+      document.getElementById('kpiTotalQueries').textContent = studioState.metrics.totalQueries;
+      document.getElementById('kpiAstDrifts').textContent = studioState.metrics.astDrifts;
+      document.getElementById('kpiNeutralized').textContent = studioState.metrics.neutralizedPayloads;
+
+      updateAllTableCounts();
+      renderDrawerLogStream();
+      renderTelemetryAuditTable();
+    }
+
+    function renderDrawerLogStream() {
+      const stream = document.getElementById('drawerLogStream');
+      stream.innerHTML = studioState.mirrorDb.audit_events.slice(0, 12).map(ev => {
+        const isDrift = ev.ast_status.startsWith('DRIFT');
+        const isNeutralized = ev.ast_status.startsWith('NEUTRALIZED');
+        const borderCls = isDrift ? 'border-rose-500/40 bg-rose-950/15' : (isNeutralized ? 'border-emerald-500/40 bg-emerald-950/15' : 'border-white/10 bg-zinc-900/70');
+        return `
+          <div class="p-2.5 rounded-lg border ${borderCls} font-mono text-[11px] space-y-1">
+            <div class="flex items-center justify-between text-[10px]">
+              <span class="text-zinc-400">${ev.timestamp} &bull; ${ev.event_id}</span>
+              <span class="${isDrift ? 'text-rose-400 font-bold' : 'text-emerald-400'}">${ev.ast_status}</span>
+            </div>
+            <div class="text-zinc-200 truncate">${escapeHtml(ev.payload)}</div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function clearDrawerLogs() {
+      studioState.mirrorDb.audit_events = [];
+      renderDrawerLogStream();
+      renderTelemetryAuditTable();
+    }
+
+    /*************************************************************************
+     * 8. MODE, SCENARIO & PRESET CONTROLLERS
+     *************************************************************************/
+    function setExecutionMode(mode) {
+      studioState.executionMode = mode;
+      const hConcat = document.getElementById('headerConcatBtn');
+      const hParam = document.getElementById('headerParamBtn');
+      const bConcat = document.getElementById('builderConcatBtn');
+      const bParam = document.getElementById('builderParamBtn');
+      const bStatus = document.getElementById('builderModeStatus');
+
+      if (mode === 'concat') {
+        hConcat.className = 'px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 bg-rose-500/15 text-rose-300 border border-rose-500/30';
+        hParam.className = 'px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200';
+        bConcat.className = 'py-2 px-3 rounded-lg text-xs font-semibold transition cursor-pointer bg-rose-500/15 text-rose-300 border border-rose-500/30 flex items-center justify-center gap-1.5';
+        bParam.className = 'py-2 px-3 rounded-lg text-xs font-semibold transition cursor-pointer bg-zinc-900 text-zinc-400 hover:text-white border border-white/10 flex items-center justify-center gap-1.5';
+        bStatus.textContent = 'Unparameterized String Concat';
+        bStatus.className = 'text-[10px] font-mono text-rose-400';
+      } else {
+        hParam.className = 'px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 bg-emerald-500/15 text-emerald-300 border border-emerald-500/30';
+        hConcat.className = 'px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200';
+        bParam.className = 'py-2 px-3 rounded-lg text-xs font-semibold transition cursor-pointer bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center justify-center gap-1.5';
+        bConcat.className = 'py-2 px-3 rounded-lg text-xs font-semibold transition cursor-pointer bg-zinc-900 text-zinc-400 hover:text-white border border-white/10 flex items-center justify-center gap-1.5';
+        bStatus.textContent = 'Parameterized ($1, $2)';
+        bStatus.className = 'text-[10px] font-mono text-emerald-400';
+      }
+      executeStudioPipeline(true);
+    }
+
+    function selectEndpointScenario(scen) {
+      studioState.endpointScenario = scen;
+      ['auth', 'ledger', 'staff'].forEach(k => {
+        const btn = document.getElementById(`epBtn_${k}`);
+        btn.className = k === scen
+          ? 'py-2 px-2 rounded-lg text-[11px] font-semibold bg-zinc-800 text-white transition cursor-pointer text-center shadow'
+          : 'py-2 px-2 rounded-lg text-[11px] font-medium text-zinc-400 hover:text-white transition cursor-pointer text-center';
+      });
+
+      const pLabel = document.getElementById('inputLabelPrimary');
+      const sLabel = document.getElementById('inputLabelSecondary');
+      const pInput = document.getElementById('studioPrimaryInput');
+      const sInput = document.getElementById('studioSecondaryInput');
+      const tblBadge = document.getElementById('activeTableBadge');
+
+      if (scen === 'auth') {
+        pLabel.innerHTML = `Primary Parameter (<code class="text-amber-300 font-mono">username</code>)`;
+        sLabel.innerHTML = `Secondary Parameter (<code class="text-amber-300 font-mono">vault_pin</code>)`;
+        pInput.value = 'elena.rostova';
+        sInput.value = 'VAULT-9920';
+        tblBadge.innerHTML = `Table: <strong class="text-amber-300">users</strong>`;
+      } else if (scen === 'ledger') {
+        pLabel.innerHTML = `Account Filter (<code class="text-amber-300 font-mono">account_code</code>)`;
+        sLabel.innerHTML = `Classification (<code class="text-amber-300 font-mono">classification</code>)`;
+        pInput.value = 'ACC-ZURICH';
+        sInput.value = 'RESTRICTED';
+        tblBadge.innerHTML = `Table: <strong class="text-emerald-300">treasury_ledger</strong>`;
+      } else {
+        pLabel.innerHTML = `Role Filter (<code class="text-amber-300 font-mono">role</code>)`;
+        sLabel.innerHTML = `Clearance Filter (<code class="text-amber-300 font-mono">clearance_level</code>)`;
+        pInput.value = 'Architect';
+        sInput.value = 'LEVEL-4';
+        tblBadge.innerHTML = `Table: <strong class="text-amber-300">users</strong>`;
+      }
+
+      executeStudioPipeline(true);
+    }
+
+    function loadStudioPreset(preset) {
+      const pInput = document.getElementById('studioPrimaryInput');
+      const sInput = document.getElementById('studioSecondaryInput');
+
+      if (preset === 'valid') {
+        selectEndpointScenario('auth');
+        pInput.value = 'elena.rostova';
+        sInput.value = 'VAULT-9920';
+      } else if (preset === 'tautology') {
+        selectEndpointScenario('auth');
+        pInput.value = "elena.rostova' OR '1'='1";
+        sInput.value = 'INVALID-PIN';
+      } else if (preset === 'comment') {
+        selectEndpointScenario('auth');
+        pInput.value = "viktor.kane' --";
+        sInput.value = 'BYPASSED';
+      } else if (preset === 'union') {
+        selectEndpointScenario('staff');
+        pInput.value = "%' UNION SELECT key_id, service_name, environment, secret_token, rotation_date, 'EXFIL', 'HIGH' FROM system_credentials --";
+        sInput.value = 'LEVEL';
+      }
+      executeStudioPipeline(true);
+    }
+
+    function triggerQuickDemo(demoType) {
+      if (studioState.activeWorkspace !== 'pipeline') {
+        switchWorkspace('pipeline');
+      }
+      if (demoType === 'baseline') {
+        setExecutionMode('concat');
+        loadStudioPreset('valid');
+        showToast('Baseline Loaded', 'Executed valid credentials for Dr. Elena Rostova.');
+      } else if (demoType === 'tautology') {
+        setExecutionMode('concat');
+        loadStudioPreset('tautology');
+        showToast('Boolean AST Drift', 'Injected OR \'1\'=\'1 branch in String Concat mode.');
+      } else if (demoType === 'comment') {
+        setExecutionMode('concat');
+        loadStudioPreset('comment');
+        showToast('Comment Truncation', 'Pruned password verification node using inline -- comment.');
+      } else if (demoType === 'union') {
+        setExecutionMode('concat');
+        loadStudioPreset('union');
+        showToast('UNION Extraction', 'Joined system_credentials rows into the staff lookup response.');
+      } else if (demoType === 'patched') {
+        loadStudioPreset('tautology');
+        setExecutionMode('param');
+        showToast('Prepared Fix Verified', 'Bound input as scalar parameter $1. AST Drift prevented!');
+      }
+    }
+
+    /*************************************************************************
+     * 9. WORKSPACE 2: DATABASE STUDIO & CUSTOM SQL CONSOLE
+     *************************************************************************/
+    function selectDbTable(tbl) {
+      studioState.activeDbTable = tbl;
+      ['users', 'treasury_ledger', 'system_credentials', 'audit_events'].forEach(t => {
+        const btn = document.getElementById(`dbTab_${t}`);
+        if (!btn) return;
+        btn.className = t === tbl
+          ? 'px-4 py-2.5 rounded-xl text-xs font-mono font-semibold bg-emerald-500 text-zinc-950 cursor-pointer transition shadow'
+          : 'px-4 py-2.5 rounded-xl text-xs font-mono font-medium bg-zinc-900 text-zinc-300 hover:text-white border border-white/10 cursor-pointer transition';
+      });
+      renderDbExplorerTable();
+    }
+
+    function renderDbExplorerTable() {
+      const tbl = studioState.activeDbTable;
+      const thead = document.getElementById('dbExplorerThead');
+      const tbody = document.getElementById('dbExplorerTbody');
+      const rows = studioState.mirrorDb[tbl] || [];
+
+      if (rows.length === 0) {
+        thead.innerHTML = `<tr><th class="py-3 px-4">Empty Table</th></tr>`;
+        tbody.innerHTML = `<tr><td class="py-6 px-4 text-zinc-500 text-center">No records currently in ${tbl}.</td></tr>`;
+        return;
+      }
+
+      const cols = Object.keys(rows[0]);
+      thead.innerHTML = `
+        <tr>
+          ${cols.map(c => `<th class="py-3.5 px-4 uppercase tracking-wider text-[11px]">${escapeHtml(c)}</th>`).join('')}
+          ${tbl === 'users' ? '<th class="py-3.5 px-4 text-right">Action</th>' : ''}
+        </tr>
+      `;
+
+      tbody.innerHTML = rows.map((row, rIdx) => `
+        <tr class="hover:bg-white/[0.03] transition">
+          ${cols.map((c, cIdx) => `
+            <td class="py-3 px-4 ${cIdx === 1 ? 'font-semibold text-white' : 'text-zinc-300'}">${escapeHtml(String(row[c]))}</td>
+          `).join('')}
+          ${tbl === 'users' ? `
+            <td class="py-3 px-4 text-right">
+              <button onclick="deleteDbUserRow(${rIdx})" class="text-rose-400 hover:text-rose-300 text-xs cursor-pointer" title="Delete Row">
+                <i class="fa-solid fa-trash-can"></i>
+              </button>
+            </td>
+          ` : ''}
+        </tr>
+      `).join('');
+    }
+
+    function insertNewDatabaseUser() {
+      const username = document.getElementById('newDbUsername').value.trim();
+      const full_name = document.getElementById('newDbFullName').value.trim() || 'Custom Staff Record';
+      const role = document.getElementById('newDbRole').value.trim() || 'Security Analyst';
+      const clearance_level = document.getElementById('newDbClearance').value;
+      const vault_pin = document.getElementById('newDbPin').value.trim() || 'VAULT-5500';
+
+      if (!username) {
+        showToast('Validation Notice', 'Please provide a username for the new database row.');
+        return;
+      }
+
+      const nextId = studioState.mirrorDb.users.length > 0
+        ? Math.max(...studioState.mirrorDb.users.map(u => u.id)) + 1
+        : 101;
+
+      studioState.mirrorDb.users.push({
+        id: nextId,
+        username,
+        full_name,
+        role,
+        clearance_level,
+        vault_pin,
+        mfa_seed: `TOTP-${Math.floor(1000 + Math.random() * 9000)}-C1`
+      });
+
+      syncMirrorToSqliteWasm();
+      updateAllTableCounts();
+      selectDbTable('users');
+
+      document.getElementById('newDbUsername').value = '';
+      document.getElementById('newDbFullName').value = '';
+      document.getElementById('newDbRole').value = '';
+      document.getElementById('newDbPin').value = '';
+
+      showToast('Record Committed', `Added "${username}" (ID ${nextId}) to SQLite users table.`);
+    }
+
+    function deleteDbUserRow(idx) {
+      const removed = studioState.mirrorDb.users.splice(idx, 1);
+      syncMirrorToSqliteWasm();
+      updateAllTableCounts();
+      renderDbExplorerTable();
+      if (removed.length) {
+        showToast('Row Deleted', `Removed user "${removed[0].username}" from SQLite.`);
+      }
+    }
+
+    function setSqlConsolePreset(sql) {
+      document.getElementById('customSqlTextarea').value = sql;
+      runCustomSqlConsole();
+    }
+
+    function runCustomSqlConsole() {
+      const sql = document.getElementById('customSqlTextarea').value.trim();
+      const statusEl = document.getElementById('sqlConsoleStatus');
+      const thead = document.getElementById('sqlConsoleThead');
+      const tbody = document.getElementById('sqlConsoleTbody');
+
+      if (!sql) return;
+
+      if (studioState.sqliteDb) {
+        try {
+          const res = studioState.sqliteDb.exec(sql);
+          if (!res || res.length === 0) {
+            statusEl.textContent = 'Statement executed successfully (0 rows returned).';
+            statusEl.className = 'text-xs font-mono text-emerald-400';
+            thead.innerHTML = '';
+            tbody.innerHTML = `<tr><td class="py-4 px-4 text-zinc-500">Query executed cleanly with no result set.</td></tr>`;
+            return;
+          }
+          const cols = res[0].columns;
+          const vals = res[0].values;
+          statusEl.textContent = `Returned ${vals.length} row(s) in 0.6 ms.`;
+          statusEl.className = 'text-xs font-mono text-emerald-400';
+
+          thead.innerHTML = `<tr>${cols.map(c => `<th class="py-2.5 px-3">${escapeHtml(c)}</th>`).join('')}</tr>`;
+          tbody.innerHTML = vals.map(r => `
+            <tr>${r.map(c => `<td class="py-2 px-3">${escapeHtml(String(c))}</td>`).join('')}</tr>
+          `).join('');
+          return;
+        } catch (err) {
+          statusEl.textContent = `SQLite Error: ${err.message}`;
+          statusEl.className = 'text-xs font-mono text-rose-400';
+          return;
+        }
+      }
+
+      // Mirror fallback for custom SQL console
+      const lower = sql.toLowerCase();
+      let targetTbl = 'users';
+      if (lower.includes('treasury_ledger')) targetTbl = 'treasury_ledger';
+      if (lower.includes('system_credentials')) targetTbl = 'system_credentials';
+      const data = studioState.mirrorDb[targetTbl];
+      const cols = Object.keys(data[0] || {});
+      thead.innerHTML = `<tr>${cols.map(c => `<th class="py-2.5 px-3">${escapeHtml(c)}</th>`).join('')}</tr>`;
+      tbody.innerHTML = data.map(row => `
+        <tr>${cols.map(c => `<td class="py-2 px-3">${escapeHtml(String(row[c]))}</td>`).join('')}</tr>
+      `).join('');
+      statusEl.textContent = `Returned ${data.length} row(s) from ${targetTbl}.`;
+      statusEl.className = 'text-xs font-mono text-emerald-400';
+    }
+
+    function updateAllTableCounts() {
+      ['users', 'treasury_ledger', 'system_credentials', 'audit_events'].forEach(t => {
+        const el = document.getElementById(`dbCount_${t}`);
+        if (el) el.textContent = studioState.mirrorDb[t].length;
+      });
+    }
+
+    function resetRelationalDatabase() {
+      initMirrorDatabase();
+      renderDbExplorerTable();
+      executeStudioPipeline(false);
+      showToast('Database Restored', 'All 4 relational tables reset to default seed state.');
+    }
+
+    /*************************************************************************
+     * 10. WORKSPACE 3: DEFENSE MATRIX & MULTI-LANGUAGE CODE LAB
+     *************************************************************************/
+    function setDefenseInput(val) {
+      document.getElementById('defenseTestInput').value = val;
+      evaluateDefenseMatrix();
+    }
+
+    function evaluateDefenseMatrix() {
+      const rawInput = document.getElementById('defenseTestInput').value;
+      const kwOn = document.getElementById('defToggleKeyword').checked;
+      const cmtOn = document.getElementById('defToggleComment').checked;
+      const prepOn = document.getElementById('defTogglePrepared').checked;
+      const out = document.getElementById('defenseEvaluationOutput');
+
+      let transformed = rawInput;
+      let kwNote = 'Disabled';
+      if (kwOn) {
+        transformed = transformed.replace(/OR|SELECT|UNION/g, '');
+        kwNote = transformed === rawInput
+          ? 'Bypassed! Mixed-case or symbolic syntax slipped past uppercase filter.'
+          : `Stripped uppercase keywords -> "${transformed}"`;
+      }
+
+      const blockedByComment = cmtOn && /--|\/\*/.test(transformed);
+      const stillHasAstDrift = /'\s*oR\s+|'\s*OR\s+|'\s*--/i.test(transformed);
+
+      out.innerHTML = `
+        <div class="p-3 rounded-xl bg-zinc-950 border border-white/10 text-xs font-mono space-y-1">
+          <div class="flex justify-between">
+            <span class="text-zinc-400">Layer 1 (Keyword Blacklist):</span>
+            <span class="${kwOn ? 'text-amber-300' : 'text-zinc-500'}">${kwOn ? 'ACTIVE' : 'OFF'}</span>
+          </div>
+          <div class="text-[11px] text-zinc-300">${escapeHtml(kwNote)}</div>
+        </div>
+
+        <div class="p-3 rounded-xl bg-zinc-950 border border-white/10 text-xs font-mono space-y-1">
+          <div class="flex justify-between">
+            <span class="text-zinc-400">Layer 2 (Comment Blocker):</span>
+            <span class="${blockedByComment ? 'text-emerald-400 font-bold' : 'text-amber-300'}">
+              ${cmtOn ? (blockedByComment ? 'BLOCKED (--)' : 'PASSED (No Comments Used)') : 'OFF'}
+            </span>
+          </div>
+          <div class="text-[11px] text-zinc-300">
+            ${blockedByComment ? 'Query rejected due to comment sequence.' : 'Payloads without "--" pass right through comment filters.'}
+          </div>
+        </div>
+
+        <div class="p-3.5 rounded-xl ${prepOn ? 'bg-emerald-950/25 border-emerald-500/40' : (stillHasAstDrift && !blockedByComment ? 'bg-rose-950/30 border-rose-500/50' : 'bg-zinc-950 border-white/10')} border text-xs font-mono space-y-1">
+          <div class="flex justify-between">
+            <span class="text-white font-semibold">Final AST Outcome:</span>
+            <span class="${prepOn ? 'text-emerald-400 font-bold' : (stillHasAstDrift && !blockedByComment ? 'text-rose-400 font-bold' : 'text-amber-300')}">
+              ${prepOn ? 'SAFE (LOCKED BY PREPARED $1)' : (blockedByComment ? 'BLOCKED AT WAF' : (stillHasAstDrift ? 'VULNERABLE (AST HIJACKED!)' : 'NOMINAL'))}
+            </span>
+          </div>
+          <div class="text-[11px] text-zinc-300">
+            ${prepOn
+              ? `Prepared Statement binds "${escapeHtml(rawInput)}" strictly as a literal string—even legitimate names with apostrophes like O'Connor work safely without breaking SQL syntax!`
+              : 'Without Prepared Statements, any unblocked quote alters the SQL syntax tree.'}
+          </div>
+        </div>
+      `;
+    }
+
+    const remediationCodeSnippets = {
+      node: {
+        vuln: `// Node.js (pg) — VULNERABLE String Interpolation
+app.post('/api/v2/auth/verify', async (req, res) => {
+  const { username, vaultPin } = req.body;
+
+  // Untrusted input directly mutates the SQL AST:
+  const query = \`
+    SELECT id, username, role, clearance_level
+    FROM users
+    WHERE username = '\${username}'
+      AND vault_pin = '\${vaultPin}';
+  \`;
+  const result = await pool.query(query);
+  return res.json(result.rows);
+});`,
+        secure: `// Node.js (pg) — SECURE Parameterized Prepared Statement
+app.post('/api/v2/auth/verify', async (req, res) => {
+  const { username, vaultPin } = req.body;
+
+  // $1 and $2 lock the SQL AST before parameters are bound:
+  const query = \`
+    SELECT id, username, role, clearance_level
+    FROM users
+    WHERE username = $1
+      AND vault_pin = $2;
+  \`;
+  const result = await pool.query(query, [username, vaultPin]);
+  return res.json(result.rows);
+});`
+      },
+      python: {
+        vuln: `# Python (sqlite3) — VULNERABLE f-string Formatting
+def authenticate_vault_user(cursor, username: str, vault_pin: str):
+    # Quotes inside username break out of the literal node:
+    sql = f"""
+        SELECT id, username, role, clearance_level
+        FROM users
+        WHERE username = '{username}'
+          AND vault_pin = '{vault_pin}'
+    """
+    cursor.execute(sql)
+    return cursor.fetchall()`,
+        secure: `# Python (sqlite3) — SECURE Tuple Parameter Binding
+def authenticate_vault_user(cursor, username: str, vault_pin: str):
+    # '?' placeholders compile the AST prior to binding:
+    sql = """
+        SELECT id, username, role, clearance_level
+        FROM users
+        WHERE username = ?
+          AND vault_pin = ?
+    """
+    cursor.execute(sql, (username, vault_pin))
+    return cursor.fetchall()`
+      },
+      php: {
+        vuln: `// PHP (PDO) — VULNERABLE Variable Concatenation
+$username = $_POST['username'];
+$vaultPin = $_POST['vault_pin'];
+
+// Direct concatenation allows UNION and OR tautologies:
+$sql = "SELECT id, username, role FROM users " .
+       "WHERE username = '" . $username . "' " .
+       "AND vault_pin = '" . $vaultPin . "'";
+
+$rows = $pdo->query($sql)->fetchAll();`,
+        secure: `// PHP (PDO) — SECURE Prepared Statement with Named Placeholders
+$stmt = $pdo->prepare(
+    'SELECT id, username, role FROM users
+     WHERE username = :username AND vault_pin = :vault_pin'
+);
+
+// Parameters are sent separately from the compiled SQL template:
+$stmt->execute([
+    'username'  => $_POST['username'],
+    'vault_pin' => $_POST['vault_pin']
+]);
+$rows = $stmt->fetchAll();`
+      },
+      java: {
+        vuln: `// Java (JDBC) — VULNERABLE Statement Concatenation
+String sql = "SELECT id, username, role FROM users " +
+             "WHERE username = '" + username + "' " +
+             "AND vault_pin = '" + vaultPin + "'";
+
+Statement stmt = connection.createStatement();
+ResultSet rs = stmt.executeQuery(sql);`,
+        secure: `// Java (JDBC) — SECURE PreparedStatement
+String sql = "SELECT id, username, role FROM users " +
+             "WHERE username = ? AND vault_pin = ?";
+
+PreparedStatement pstmt = connection.prepareStatement(sql);
+pstmt.setString(1, username);
+pstmt.setString(2, vaultPin);
+ResultSet rs = pstmt.executeQuery();`
+      }
+    };
+
+    function selectRemediationLang(lang) {
+      studioState.remediationLang = lang;
+      ['node', 'python', 'php', 'java'].forEach(l => {
+        const btn = document.getElementById(`codeLang_${l}`);
+        btn.className = l === lang
+          ? 'px-3 py-1.5 rounded-lg text-xs font-mono font-semibold bg-amber-500 text-zinc-950 cursor-pointer'
+          : 'px-3 py-1.5 rounded-lg text-xs font-mono font-medium text-zinc-400 hover:text-white cursor-pointer';
+      });
+      document.getElementById('remediationVulnerableCode').textContent = remediationCodeSnippets[lang].vuln;
+      document.getElementById('remediationSecureCode').textContent = remediationCodeSnippets[lang].secure;
+    }
+
+    /*************************************************************************
+     * 11. WORKSPACE 4: TELEMETRY TABLE & JSON REPORT EXPORTER
+     *************************************************************************/
+    function renderTelemetryAuditTable() {
+      const tbody = document.getElementById('telemetryAuditTbody');
+      const events = studioState.mirrorDb.audit_events;
+
+      if (events.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="py-6 px-4 text-center text-zinc-500">No queries recorded yet.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = events.map(ev => {
+        const isDrift = ev.ast_status.startsWith('DRIFT');
+        return `
+          <tr class="hover:bg-white/[0.03]">
+            <td class="py-3 px-4 text-zinc-400">${ev.event_id}</td>
+            <td class="py-3 px-4 text-zinc-400">${ev.timestamp}</td>
+            <td class="py-3 px-4 text-amber-300">${ev.endpoint}</td>
+            <td class="py-3 px-4">${ev.query_mode}</td>
+            <td class="py-3 px-4 text-white max-w-xs truncate">${escapeHtml(ev.payload)}</td>
+            <td class="py-3 px-4 ${isDrift ? 'text-rose-400 font-bold' : 'text-emerald-400'}">${ev.ast_status}</td>
+            <td class="py-3 px-4">${ev.rows_returned}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function exportSessionAuditReport() {
+      const report = {
+        studio: 'KINETIX // Relational AST & Database Security Studio',
+        exported_at: new Date().toISOString(),
+        summary_metrics: studioState.metrics,
+        audit_trail: studioState.mirrorDb.audit_events
+      };
+      downloadJsonFile(report, `kinetix-security-audit-${Date.now()}.json`);
+      showToast('Audit Report Exported', 'Downloaded structured JSON security verification report.');
+    }
+
+    function exportDatabaseJson() {
+      downloadJsonFile(studioState.mirrorDb, `kinetix-relational-schema-${Date.now()}.json`);
+      showToast('Schema Exported', 'Downloaded all 4 SQLite tables as JSON.');
+    }
+
+    function downloadJsonFile(dataObj, filename) {
+      const blob = new Blob([JSON.stringify(dataObj, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    /*************************************************************************
+     * 12. LAYOUT & WORKSPACE NAVIGATION CONTROLLERS
+     *************************************************************************/
+    function switchWorkspace(ws) {
+      studioState.activeWorkspace = ws;
+      const list = ['pipeline', 'database', 'defense', 'telemetry'];
+
+      list.forEach(name => {
+        const sec = document.getElementById(`workspace_${name}`);
+        const btn = document.getElementById(`navBtn_${name}`);
+        if (name === ws) {
+          sec.classList.remove('hidden');
+          btn.className = 'w-full text-left px-3 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-between transition cursor-pointer bg-gradient-to-r from-emerald-500/15 to-transparent text-white border border-emerald-500/30';
+        } else {
+          sec.classList.add('hidden');
+          btn.className = 'w-full text-left px-3 py-2.5 rounded-xl text-xs font-medium flex items-center justify-between transition cursor-pointer text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.03] border border-transparent';
+        }
+      });
+
+      if (ws === 'database') {
+        renderDbExplorerTable();
+        runCustomSqlConsole();
+      } else if (ws === 'defense') {
+        evaluateDefenseMatrix();
+      } else if (ws === 'telemetry') {
+        renderTelemetryAuditTable();
+      }
+      renderGuideStep();
+    }
+
+    function toggleLeftSidebar() {
+      const sb = document.getElementById('leftSidebar');
+      studioState.leftSidebarOpen = !studioState.leftSidebarOpen;
+      if (studioState.leftSidebarOpen) {
+        sb.classList.remove('hidden');
+      } else {
+        sb.classList.add('hidden');
+      }
+    }
+
+    function toggleInspectorDrawer() {
+      const dr = document.getElementById('rightInspectorDrawer');
+      if (dr.classList.contains('hidden')) {
+        dr.classList.remove('hidden');
+        dr.classList.add('flex');
+      } else {
+        dr.classList.add('hidden');
+        dr.classList.remove('flex');
+      }
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    function showToast(title, msg) {
+      const stack = document.getElementById('toastStack');
+      const card = document.createElement('div');
+      card.className = 'pointer-events-auto kinetix-card p-3.5 rounded-xl border border-amber-500/40 text-xs shadow-2xl transition-all duration-300';
+      card.innerHTML = `
+        <div class="flex items-center gap-2 font-bold text-amber-300">
+          <i class="fa-solid fa-bolt text-[11px]"></i>
+          <span>${escapeHtml(title)}</span>
+        </div>
+        <div class="text-zinc-300 mt-1 leading-relaxed">${escapeHtml(msg)}</div>
+      `;
+      stack.appendChild(card);
+      setTimeout(() => {
+        card.style.opacity = '0';
+        setTimeout(() => card.remove(), 250);
+      }, 3200);
+    }
+
+    // Keyboard shortcut: Ctrl+Enter or Cmd+Enter to execute pipeline
+    window.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        if (studioState.activeWorkspace === 'pipeline') {
+          executeStudioPipeline(true);
+          showToast('Pipeline Executed', 'Traced SQL query and updated Abstract Syntax Tree.');
+        } else if (studioState.activeWorkspace === 'database') {
+          runCustomSqlConsole();
+        }
+      }
+    });
+
+    // Boot Studio on Window Load
+    window.onload = function () {
+      initMirrorDatabase();
+      selectRemediationLang('node');
+      evaluateDefenseMatrix();
+      executeStudioPipeline(true);
+      renderGuideStep();
+      bootSqlJsWasm();
+    };
+  </script>
+</body>
+</html>
